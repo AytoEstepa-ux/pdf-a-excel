@@ -35,38 +35,4 @@ def extraer_por_periodo(texto):
         })
     return datos
 
-if archivo_pdf:
-    texto = ""
-    with pdfplumber.open(archivo_pdf) as pdf:
-        for pagina in pdf.pages:
-            texto += pagina.extract_text() + "\n"
-
-    datos_periodo = extraer_por_periodo(texto)
-    total_factura = extraer_total_factura(texto)
-    periodo_facturacion = extraer_periodo_facturacion(texto)
-
-    if datos_periodo:
-        # Crear DataFrame
-        df = pd.DataFrame(datos_periodo)
-
-        # Asegurar columnas únicas (por seguridad)
-        df.columns = pd.io.parsers.ParserBase({'names': df.columns})._maybe_dedup_names(df.columns)
-
-        # Convertir importe a float
-        df["Importe Potencia (€)"] = df["Importe Potencia (€)"].str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
-        total_potencia = df["Importe Potencia (€)"].sum()
-
-        # Fila total
-        fila_total = {
-            "Periodo": "TOTAL",
-            "Energía Activa (kWh)": "",
-            "Energía Reactiva (kVArh)": "",
-            "Potencia Contratada (kW)": "",
-            "Potencia Máxima (kW)": "",
-            "Importe Potencia (€)": total_potencia
-        }
-        df = pd.concat([df, pd.DataFrame([fila_total])], ignore_index=True)
-
-        # Si ya existe la columna "Periodo de Facturación", eliminarla
-        if "Periodo de Facturación" in df.columns:
-            df = df.d
+def hacer_nombres_columnas_unicos_
