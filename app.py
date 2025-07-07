@@ -10,11 +10,12 @@ st.title("📄 Extraer datos por periodo de factura PDF")
 archivo_pdf = st.file_uploader("Subir factura PDF", type="pdf")
 
 def extraer_periodo_facturacion(texto):
-    match = re.search(r"Periodo facturación:\s+(\d{2}/\d{2}/\d{4})\s+al\s+(\d{2}/\d{2}/\d{4})", texto)
+    # Expresión regular mejorada: acepta mayúsculas, espacios variables y tilde en facturación
+    match = re.search(r"Periodo\s+facturaci[oó]n[:\s]+(\d{2}/\d{2}/\d{4})\s*al\s*(\d{2}/\d{2}/\d{4})", texto, re.IGNORECASE)
     return f"{match.group(1)} al {match.group(2)}" if match else None
 
 def extraer_total_factura(texto):
-    match = re.search(r"Total Factura\s+([\d.,]+)", texto)
+    match = re.search(r"Total Factura\s+([\d.,]+)", texto, re.IGNORECASE)
     return match.group(1) if match else None
 
 def extraer_por_periodo(texto):
@@ -41,10 +42,16 @@ if archivo_pdf:
         for pagina in pdf.pages:
             texto += pagina.extract_text() + "\n"
 
+    # Mostrar el texto extraído para depuración
+    st.write("=== TEXTO EXTRAÍDO DEL PDF ===")
+    st.write(texto)
+
     # Extracción de datos
     datos_periodo = extraer_por_periodo(texto)
     total_factura = extraer_total_factura(texto)
     periodo_facturacion = extraer_periodo_facturacion(texto)
+
+    st.write("Periodo de facturación extraído:", periodo_facturacion)
 
     if datos_periodo:
         # Crear DataFrame
