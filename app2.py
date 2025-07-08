@@ -9,7 +9,8 @@ st.set_page_config(page_title="Factura Endesa a Excel", layout="centered")
 
 st.title("📄 Convertidor PDF → Excel: Factura Endesa")
 
-uploaded_file = st.file_uploader("Sube tu factura en PDF", type=["pdf"])
+# Modificamos la carga de archivos para permitir múltiples archivos
+uploaded_files = st.file_uploader("Sube tus facturas en PDF", type=["pdf"], accept_multiple_files=True)
 
 def extraer_datos_generales(texto):
     campos = {
@@ -35,13 +36,11 @@ def extraer_datos_generales(texto):
     return resultados
 
 def extraer_tabla_energia_y_potencia(texto):
-    """
-    Busca patrones del tipo P1 a P6 y extrae las cifras de energía y potencia por periodo.
-    """
     patron = re.compile(
         r"Periodo\s+([1-6])(?:\s+Capacitiva)?\s+"
-        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
-        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)"
+        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
+        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
+        r"([\d.,]+)\s+([\d.,]+)"
     )
 
     filas = []
@@ -65,39 +64,56 @@ def extraer_tabla_energia_y_potencia(texto):
 
     return pd.DataFrame(filas)
 
-if uploaded_file is not None:
-    with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
+def procesar_archivo_pdf(pdf_file):
+    with fitz.open(stream=pdf_file.read(), filetype="pdf") as doc:
         texto = ""
         for page in doc:
             texto += page.get_text()
-
-    st.success("✅ PDF procesado correctamente")
 
     # Extraer datos generales
     resumen_dict = extraer_datos_generales(texto)
     df_resumen = pd.DataFrame([resumen_dict])
 
-    # Extraer tabla por periodo
+    # Extraer tabla de energía y potencia
     df_detalle = extraer_tabla_energia_y_potencia(texto)
 
-    # Mostrar los resultados
-    st.subheader("📋 Resumen de la Factura")
-    st.dataframe(df_resumen)
+    return df_resumen, df_detalle
 
-    st.subheader("📊 Energía y Potencia por Periodo")
-    st.dataframe(df_detalle)
+if uploaded_files is not None:
+    # Listas para almacenar los DataFrames de cada archivo PDF
+    resumen_list = []
+    detalle_list = []
+
+    for uploaded_file in uploaded_files:
+        st.write(f"Procesando archivo: {uploaded_file.name}")
+        
+        df_resumen, df_detalle = procesar_archivo_pdf(uploaded_file)
+        
+        resumen_list.append(df_resumen)
+        detalle_list.append(df_detalle)
+
+    # Concatenar todos los resúmenes y detalles en un solo DataFrame
+    df_resumen_final = pd.concat(resumen_list, ignore_index=True)
+    df_detalle_final = pd.concat(detalle_list, ignore_index=True)
+
+    # Mostrar los resultados
+    st.subheader("📋 Resumen de las Facturas")
+    st.dataframe(df_resumen_final)
+
+    st.subheader("📊 Energía y Potencia por Periodo (de todas las facturas)")
+    st.dataframe(df_detalle_final)
 
     # Generar Excel
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        df_resumen.to_excel(writer, sheet_name="Resumen Factura", index=False)
-        df_detalle.to_excel(writer, sheet_name="Energía y Potencia", index=False)
+        df_resumen_final.to_excel(writer, sheet_name="Resumen Factura", index=False)
+        df_detalle_final.to_excel(writer, sheet_name="Energía y Potencia", index=False)
     output.seek(0)
 
     # Botón de descarga
     st.download_button(
-        label="⬇️ Descargar Excel",
+        label="⬇️ Descargar Excel Consolidado",
         data=output,
-        file_name="factura_endesa.xlsx",
+        file_name="facturas_endesa_consolidadas.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
