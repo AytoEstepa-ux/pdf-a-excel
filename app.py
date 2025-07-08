@@ -67,12 +67,41 @@ if archivo_pdf:
     with pdfplumber.open(archivo_pdf) as pdf:
         for pagina in pdf.pages:
             texto += pagina.extract_text() + "\n"
-
+        
+        # Extraer la última tabla encontrada desde la última página hacia adelante
+        ultima_tabla = None
+        for pagina in reversed(pdf.pages):
+            tablas = pagina.extract_tables()
+            if tablas:
+                ultima_tabla = tablas[-1]  # tomamos la última tabla de esa página
+                break
+    
+    # Extraer datos específicos con regex (tu código original)
     periodo_facturacion = extraer_periodo_facturacion(texto)
     total_factura = extraer_total_factura(texto)
     datos_energia = extraer_energia(texto)
     datos_potencia = extraer_potencia(texto)
 
+    # Mostrar tabla extraída completa si existe
+    if ultima_tabla:
+        df_tabla_final = pd.DataFrame(ultima_tabla[1:], columns=ultima_tabla[0])
+        st.subheader("📋 Última tabla extraída del PDF")
+        st.dataframe(df_tabla_final)
+
+        salida_excel_tabla = BytesIO()
+        df_tabla_final.to_excel(salida_excel_tabla, index=False, engine='openpyxl')
+        salida_excel_tabla.seek(0)
+
+        st.download_button(
+            label="⬇️ Descargar última tabla en Excel",
+            data=salida_excel_tabla,
+            file_name="ultima_tabla_factura.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.warning("No se encontró ninguna tabla en el PDF.")
+
+    # Si hay datos de energía y potencia, procesarlos y mostrarlos como antes
     if datos_energia and datos_potencia:
         df_energia = pd.DataFrame(datos_energia)
         df_potencia = pd.DataFrame(datos_potencia)
@@ -128,6 +157,7 @@ if archivo_pdf:
         )
     else:
         st.error("❌ No se encontraron datos por periodo en el PDF.")
+
 
 
 
