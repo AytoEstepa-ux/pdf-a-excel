@@ -42,22 +42,26 @@ def extraer_tabla_energia_y_potencia(texto):
 
     filas = []
     for match in patron.finditer(texto):
-        valores = [match.group(i).replace('.', '').replace(',', '.') for i in range(1, 13)]
-        fila = {
-            "Periodo": f"P{valores[0]}",
-            "Consumo kWh": float(valores[1]),
-            "Reactiva (kVArh)": float(valores[2]),
-            "Exceso Reactiva": float(valores[3]),
-            "Cosφ": float(valores[4]),
-            "Importe Reactiva (€)": float(valores[5]),
-            "Potencia Contratada": float(valores[6]),
-            "Max. Registrada": float(valores[7]),
-            "Kp": float(valores[8]),
-            "Te": float(valores[9]),
-            "Excesos Potencia": float(valores[10]),
-            "Importe Potencia (€)": float(valores[11]),
-        }
-        filas.append(fila)
+        # Comprobamos si match es None antes de intentar acceder a los grupos
+        if match:
+            valores = [match.group(i).replace('.', '').replace(',', '.') for i in range(1, 13)]
+            fila = {
+                "Periodo": f"P{valores[0]}",
+                "Consumo kWh": float(valores[1]),
+                "Reactiva (kVArh)": float(valores[2]),
+                "Exceso Reactiva": float(valores[3]),
+                "Cosφ": float(valores[4]),
+                "Importe Reactiva (€)": float(valores[5]),
+                "Potencia Contratada": float(valores[6]),
+                "Max. Registrada": float(valores[7]),
+                "Kp": float(valores[8]),
+                "Te": float(valores[9]),
+                "Excesos Potencia": float(valores[10]),
+                "Importe Potencia (€)": float(valores[11]),
+            }
+            filas.append(fila)
+        else:
+            st.write("No se encontró coincidencia con el patrón para la siguiente parte del texto:")
 
     return pd.DataFrame(filas)
 
@@ -121,5 +125,4 @@ if uploaded_file is not None:
         file_name="factura_endesa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
 
