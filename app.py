@@ -13,16 +13,21 @@ uploaded_file = st.file_uploader("Sube tu factura en PDF", type=["pdf"])
 
 def extraer_periodos_energia(texto):
     """
-    Extrae kWh de energía activa por periodo (P1 a P6), evitando duplicados.
+    Extrae los kWh para P1–P6 manejando correctamente el formato 7.200,580 kWh.
     """
-    patron = r"(P[1-6]):\s*([\d.]+)[\s]*kWh"
+    patron = r"(P[1-6]):\s*([\d.,]+)\s*kWh"
     encontrados = re.findall(patron, texto)
 
     periodos = defaultdict(float)
     for periodo, valor in encontrados:
-        valor_kwh = float(valor.replace('.', '').replace(',', '.'))
-        if periodos[periodo] == 0.0:  # guardar solo primera aparición
-            periodos[periodo] = valor_kwh
+        # Eliminar puntos de miles y cambiar coma decimal por punto
+        valor_limpio = valor.replace('.', '').replace(',', '.')
+        try:
+            valor_kwh = float(valor_limpio)
+            if periodos[periodo] == 0.0:
+                periodos[periodo] = valor_kwh
+        except ValueError:
+            continue  # Saltar si no se puede convertir
 
     return {f"{p} (kWh)": v for p, v in sorted(periodos.items())}
 
@@ -43,14 +48,14 @@ if uploaded_file is not None:
     data = {**periodos_kwh, "Consumo Total (kWh)": consumo_total}
     df = pd.DataFrame([data])
 
-    # ✅ Eliminar columnas duplicadas (compatible con pandas moderno)
+    # Eliminar columnas duplicadas si las hay
     df = df.loc[:, ~df.columns.duplicated()]
 
-    # Mostrar resumen
+    # Mostrar tabla
     st.subheader("📊 Resumen Detectado")
     st.dataframe(df, use_container_width=True)
 
-    # Generar Excel para descarga
+    # Generar archivo Excel
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df.to_excel(writer, sheet_name="Resumen Consumo", index=False)
@@ -63,8 +68,6 @@ if uploaded_file is not None:
         file_name="resumen_factura.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-
 
 
 
