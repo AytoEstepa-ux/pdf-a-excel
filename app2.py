@@ -3,13 +3,12 @@ import pandas as pd
 import fitz  # PyMuPDF
 import re
 import io
-from collections import defaultdict
 
 st.set_page_config(page_title="Factura Endesa a Excel", layout="centered")
 
 st.title("📄 Convertidor PDF → Excel: Factura Endesa")
 
-# Subir múltiples PDFs
+# Subir múltiples archivos PDF
 uploaded_files = st.file_uploader("Sube tus facturas en PDF", type=["pdf"], accept_multiple_files=True)
 
 def extraer_datos_generales(texto):
@@ -68,11 +67,13 @@ def extraer_tabla_energia_y_potencia(texto, periodo_facturacion):
 
     return pd.DataFrame(filas)
 
-if uploaded_files:
-    all_resumen = []
-    all_detalle = []
+# Variable para almacenar todos los datos
+df_resumen_total = pd.DataFrame()
+df_detalle_total = pd.DataFrame()
 
+if uploaded_files:
     for uploaded_file in uploaded_files:
+        # Procesar cada archivo PDF individualmente
         with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
             texto = ""
             for page in doc:
@@ -83,28 +84,28 @@ if uploaded_files:
         # Extraer datos generales
         resumen_dict = extraer_datos_generales(texto)
         df_resumen = pd.DataFrame([resumen_dict])
-        all_resumen.append(df_resumen)
+        df_resumen['Archivo'] = uploaded_file.name  # Añadir nombre del archivo
 
         # Extraer tabla por periodo
         periodo_facturacion = resumen_dict.get("Periodo Facturación", "Desconocido")
         df_detalle = extraer_tabla_energia_y_potencia(texto, periodo_facturacion)
-        all_detalle.append(df_detalle)
+        df_detalle['Archivo'] = uploaded_file.name  # Añadir nombre del archivo
 
-    # Combinar todos los datos en un solo DataFrame
-    df_resumen_total = pd.concat(all_resumen, ignore_index=True)
-    df_detalle_total = pd.concat(all_detalle, ignore_index=True)
+        # Acumular los datos en los DataFrames totales
+        df_resumen_total = pd.concat([df_resumen_total, df_resumen], ignore_index=True)
+        df_detalle_total = pd.concat([df_detalle_total, df_detalle], ignore_index=True)
 
-    # Mostrar los resultados
-    st.subheader("📋 Resumen de todas las Facturas")
+    # Mostrar los resultados acumulados
+    st.subheader("📋 Resumen de las Facturas")
     st.dataframe(df_resumen_total)
 
-    st.subheader("📊 Energía y Potencia por Periodo (Acumulado)")
+    st.subheader("📊 Energía y Potencia por Periodo")
     st.dataframe(df_detalle_total)
 
-    # Generar Excel
+    # Generar el archivo Excel acumulado
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        df_resumen_total.to_excel(writer, sheet_name="Resumen Factura", index=False)
+        df_resumen_total.to_excel(writer, sheet_name="Resumen Facturas", index=False)
         df_detalle_total.to_excel(writer, sheet_name="Energía y Potencia", index=False)
     output.seek(0)
 
@@ -115,6 +116,5 @@ if uploaded_files:
         file_name="facturas_endesa_acumuladas.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
 
 
