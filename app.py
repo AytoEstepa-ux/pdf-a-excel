@@ -3,6 +3,7 @@ import pandas as pd
 import fitz  # PyMuPDF
 import re
 import io
+from collections import defaultdict
 
 st.set_page_config(page_title="Factura Endesa a Excel", layout="centered")
 
@@ -34,6 +35,9 @@ def extraer_datos_generales(texto):
     return resultados
 
 def extraer_tabla_energia_y_potencia(texto):
+    """
+    Busca patrones del tipo P1 a P6 y extrae las cifras de energía y potencia por periodo.
+    """
     patron = re.compile(
         r"Periodo\s+([1-6])(?:\s+Capacitiva)?\s+"
         r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
@@ -42,26 +46,22 @@ def extraer_tabla_energia_y_potencia(texto):
 
     filas = []
     for match in patron.finditer(texto):
-        # Comprobamos si match es None antes de intentar acceder a los grupos
-        if match:
-            valores = [match.group(i).replace('.', '').replace(',', '.') for i in range(1, 13)]
-            fila = {
-                "Periodo": f"P{valores[0]}",
-                "Consumo kWh": float(valores[1]),
-                "Reactiva (kVArh)": float(valores[2]),
-                "Exceso Reactiva": float(valores[3]),
-                "Cosφ": float(valores[4]),
-                "Importe Reactiva (€)": float(valores[5]),
-                "Potencia Contratada": float(valores[6]),
-                "Max. Registrada": float(valores[7]),
-                "Kp": float(valores[8]),
-                "Te": float(valores[9]),
-                "Excesos Potencia": float(valores[10]),
-                "Importe Potencia (€)": float(valores[11]),
-            }
-            filas.append(fila)
-        else:
-            st.write("No se encontró coincidencia con el patrón para la siguiente parte del texto:")
+        valores = [match.group(i).replace('.', '').replace(',', '.') for i in range(1, 13)]
+        fila = {
+            "Periodo": f"P{valores[0]}",
+            "Consumo kWh": float(valores[1]),
+            "Reactiva (kVArh)": float(valores[2]),
+            "Exceso Reactiva": float(valores[3]),
+            "Cosφ": float(valores[4]),
+            "Importe Reactiva (€)": float(valores[5]),
+            "Potencia Contratada": float(valores[6]),
+            "Max. Registrada": float(valores[7]),
+            "Kp": float(valores[8]),
+            "Te": float(valores[9]),
+            "Excesos Potencia": float(valores[10]),
+            "Importe Potencia (€)": float(valores[11]),
+        }
+        filas.append(fila)
 
     return pd.DataFrame(filas)
 
@@ -79,19 +79,6 @@ if uploaded_file is not None:
 
     # Extraer tabla por periodo
     df_detalle = extraer_tabla_energia_y_potencia(texto)
-
-    # Mostrar los datos extraídos para ver cómo está la tabla
-    st.subheader("📊 Energía y Potencia por Periodo (Datos Extraídos)")
-    st.write(df_detalle)
-
-    # Verificar si las columnas están bien convertidas a numérico
-    st.write("Verificando el tipo de las columnas:")
-    st.write(df_detalle.dtypes)
-
-    # Si hay valores NaN en las columnas de los totales, intentar convertirlos a números
-    df_detalle["Consumo kWh"] = pd.to_numeric(df_detalle["Consumo kWh"], errors="coerce")
-    df_detalle["Importe Reactiva (€)"] = pd.to_numeric(df_detalle["Importe Reactiva (€)"], errors="coerce")
-    df_detalle["Importe Potencia (€)"] = pd.to_numeric(df_detalle["Importe Potencia (€)"], errors="coerce")
 
     # Sumar los totales
     total_consumo_kwh = df_detalle["Consumo kWh"].sum()
@@ -125,4 +112,3 @@ if uploaded_file is not None:
         file_name="factura_endesa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
