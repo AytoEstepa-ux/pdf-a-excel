@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st 
 import pdfplumber
 import pandas as pd
 import re
@@ -9,128 +9,125 @@ st.title("📄 Extraer datos por periodo de factura PDF")
 
 archivo_pdf = st.file_uploader("Subir factura PDF", type="pdf")
 
-def parse_line_fixed_width(line, positions):
-    """Extrae columnas de una línea con posiciones fijas.
-    positions = lista de índices donde termina cada columna."""
-    cols = []
-    start = 0
-    for pos in positions:
-        cols.append(line[start:pos].strip())
-        start = pos
-    cols.append(line[start:].strip())
-    return cols
+def extraer_periodo_facturacion(texto):
+    match = re.search(r"Periodo facturación:\s+(\d{2}/\d{2}/\d{4})\s+al\s+(\d{2}/\d{2}/\d{4})", texto)
+    return f"{match.group(1)} al {match.group(2)}" if match else None
 
-def limpiar_numeros(text):
-    # Reemplaza punto por nada, coma por punto para formato decimal europeo
-    text = text.replace('.', '').replace(',', '.')
-    try:
-        return float(text)
-    except:
-        return None
+def extraer_total_factura(texto):
+    match = re.search(r"Total Factura\s+([\d.,]+)", texto)
+    return match.group(1) if match else None
+
+def extraer_energia(texto):
+    bloques = re.findall(
+        r"Periodo\s+(\d)\s+"              # b[0]: Periodo
+        r"([\d.,]+)\s+"                   # b[1]: Energía Activa (kWh)
+        r"([\d.,]+)\s+"                   # b[2]: Energía Reactiva (kVArh)
+        r"[\d.,]+\s+"                     # Ignorar exceso
+        r"[\d.,]+",                       # Ignorar CosΦ
+        texto
+    )
+    datos = []
+    for b in bloques:
+        datos.append({
+            "Periodo": f"P{b[0]}",
+            "Energía Activa (kWh)": b[1],
+            "Energía Reactiva (kVArh)": b[2]
+        })
+    return datos
+
+def extraer_potencia(texto):
+    bloques = re.findall(
+        r"Periodo\s+(\d)\s+"              # b[0]: Periodo
+        r"[\d.,]+\s+"                     # Ignorar Energía Activa
+        r"[\d.,]+\s+"                     # Ignorar Energía Reactiva
+        r"[\d.,]+\s+"                     # Ignorar Excesos
+        r"[\d.,]+\s+"                     # Ignorar CosΦ
+        r"([\d.,]+)\s+"                   # b[1]: Potencia Contratada (kW)
+        r"([\d.,]+)\s+"                   # b[2]: Potencia Máxima (kW)
+        r"[\d.,]+\s+"                     # Ignorar Kp
+        r"[\d.,]+\s+"                     # Ignorar Te
+        r"[\d.,]+\s+"                     # Ignorar Excesos
+        r"([\d.,]+)\s+"                   # b[3]: Importe Energía Reactiva (€)
+        r"([\d.,]+)",                     # b[4]: Importe Potencia (€)
+        texto
+    )
+    datos = []
+    for b in bloques:
+        datos.append({
+            "Periodo": f"P{b[0]}",
+            "Potencia Contratada (kW)": b[1],
+            "Potencia Máxima (kW)": b[2],
+            "Importe Energía Reactiva (€)": b[3],
+            "Importe Potencia (€)": b[4]
+        })
+    return datos
 
 if archivo_pdf:
+    texto = ""
     with pdfplumber.open(archivo_pdf) as pdf:
-        texto = ""
         for pagina in pdf.pages:
             texto += pagina.extract_text() + "\n"
 
-    lineas = texto.splitlines()
+    periodo_facturacion = extraer_periodo_facturacion(texto)
+    total_factura = extraer_total_factura(texto)
+    datos_energia = extraer_energia(texto)
+    datos_potencia = extraer_potencia(texto)
 
-    # Variables para guardar tablas
-    energia_lines = []
-    potencia_lines = []
+    if datos_energia and datos_potencia:
+        df_energia = pd.DataFrame(datos_energia)
+        df_potencia = pd.DataFrame(datos_potencia)
 
-    leyendo_energia = False
-    leyendo_potencia = False
+        df = pd.merge(df_energia, df_potencia, on="Periodo", how="outer")
 
-    for linea in lineas:
-        if "Energía" in linea:
-            leyendo_energia = True
-            leyendo_potencia = False
-            continue
-        if "Potencia" in linea:
-            leyendo_potencia = True
-            leyendo_energia = False
-            continue
+        # Convertir columnas monetarias a float
+        for col in ["Importe Energía Reactiva (€)", "Importe Potencia (€)"]:
+            df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
 
-        if leyendo_energia:
-            if "TOTAL" in linea or linea.strip() == "":
-                leyendo_energia = False
-                continue
-            energia_lines.append(linea)
+        total_reactiva = df["Importe Energía Reactiva (€)"].sum()
+        total_potencia = df["Importe Potencia (€)"].sum()
 
-        elif leyendo_potencia:
-            if "TOTAL" in linea or linea.strip() == "":
-                leyendo_potencia = False
-                continue
-            potencia_lines.append(linea)
+        df["Periodo de Facturación"] = periodo_facturacion if periodo_facturacion else ""
 
-    # Ejemplo de posiciones fijas (ajustar según PDF)
-    # Supongamos que en energía hay 5 columnas y en potencia 6 columnas
-    # Estas posiciones son caracteres donde termina cada columna
-    energia_pos = [10, 25, 40, 55]  # ej. ajustar según formato real
-    potencia_pos = [10, 25, 40, 55, 70]  # ajustar
+        # Fila total
+        fila_total = {
+            "Periodo": "TOTAL",
+            "Energía Activa (kWh)": "",
+            "Energía Reactiva (kVArh)": "",
+            "Potencia Contratada (kW)": "",
+            "Potencia Máxima (kW)": "",
+            "Importe Energía Reactiva (€)": total_reactiva,
+            "Importe Potencia (€)": total_potencia,
+            "Periodo de Facturación": "TOTAL FACTURA: " + (total_factura if total_factura else "")
+        }
+        df = pd.concat([df, pd.DataFrame([fila_total])], ignore_index=True)
 
-    # Parsear energía
-    energia_data = []
-    for l in energia_lines:
-        cols = parse_line_fixed_width(l, energia_pos)
-        if len(cols) == 5:
-            energia_data.append(cols)
+        # Formato visual
+        df_display = df.copy()
+        for col in ["Importe Energía Reactiva (€)", "Importe Potencia (€)"]:
+            df_display[col] = df_display[col].apply(
+                lambda x: f"{x:,.2f}".replace(".", ",") if isinstance(x, float) else x
+            )
 
-    # Parsear potencia
-    potencia_data = []
-    for l in potencia_lines:
-        cols = parse_line_fixed_width(l, potencia_pos)
-        if len(cols) == 6:
-            potencia_data.append(cols)
+        st.subheader("📊 Datos por periodo")
+        st.dataframe(df_display)
 
-    # Convertir a DataFrames
-    df_energia = pd.DataFrame(energia_data, columns=[
-        "Periodo", "Energía Activa (kWh)", "Energía Reactiva (kVArh)", "Excesos (kVArh)", "Importe Energía (€)"
-    ])
+        if periodo_facturacion:
+            st.markdown(f"📆 **Periodo de facturación:** {periodo_facturacion}")
+        if total_factura:
+            st.markdown(f"🧾 **Total factura general:** {total_factura} €")
 
-    df_potencia = pd.DataFrame(potencia_data, columns=[
-        "Periodo", "Potencia Contratada (kW)", "Potencia Máxima (kW)", "Excesos (kW)", "Importe Excesos Potencia (€)", "Extra"
-    ])
+        salida_excel = BytesIO()
+        df_display.to_excel(salida_excel, index=False, engine='openpyxl')
+        salida_excel.seek(0)
 
-    # Limpiar números
-    for col in df_energia.columns[1:]:
-        df_energia[col] = df_energia[col].apply(limpiar_numeros)
-
-    for col in df_potencia.columns[1:-1]:  # excluir columna extra si no se usa
-        df_potencia[col] = df_potencia[col].apply(limpiar_numeros)
-
-    # Unir por periodo
-    df = pd.merge(df_energia, df_potencia.drop(columns=['Extra']), on="Periodo", how="outer")
-
-    # Calcular totales
-    fila_total = {
-        "Periodo": "TOTAL",
-        "Energía Activa (kWh)": df["Energía Activa (kWh)"].sum(),
-        "Energía Reactiva (kVArh)": df["Energía Reactiva (kVArh)"].sum(),
-        "Excesos (kVArh)": df["Excesos (kVArh)"].sum(),
-        "Importe Energía (€)": df["Importe Energía (€)"].sum(),
-        "Potencia Contratada (kW)": "",
-        "Potencia Máxima (kW)": "",
-        "Excesos (kW)": df["Excesos (kW)"].sum(),
-        "Importe Excesos Potencia (€)": df["Importe Excesos Potencia (€)"].sum(),
-    }
-    df = pd.concat([df, pd.DataFrame([fila_total])], ignore_index=True)
-
-    st.dataframe(df)
-
-    salida_excel = BytesIO()
-    df.to_excel(salida_excel, index=False, engine='openpyxl')
-    salida_excel.seek(0)
-
-    st.download_button(
-        label="⬇️ Descargar Excel",
-        data=salida_excel,
-        file_name="factura_periodos.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
+        st.download_button(
+            label="⬇️ Descargar Excel",
+            data=salida_excel,
+            file_name="factura_periodos.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.error("❌ No se encontraron datos por periodo en el PDF.")
 
 
 
