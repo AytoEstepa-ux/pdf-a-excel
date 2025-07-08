@@ -19,9 +19,8 @@ def extraer_total_factura(texto):
 
 def extraer_por_periodo(texto):
     bloques = re.findall(
-        r"Periodo\s+(\d).*?([\d.,]+)\s+([\d.,]+)\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)\s+([\d.,]+)\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)",
-        texto,
-        re.DOTALL
+        r"Periodo (\d)\s+([\d.,]+)\s+([\d.,]+)\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)\s+([\d.,]+)\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)\s+([\d.,]+)",
+        texto
     )
 
     datos = []
@@ -30,9 +29,10 @@ def extraer_por_periodo(texto):
             "Periodo": f"P{b[0]}",
             "Energía Activa (kWh)": b[1],
             "Energía Reactiva (kVArh)": b[2],
-            "Importe Energía Reactiva (€)": b[3],  # extraído correctamente
-            "Potencia Máxima (kW)": b[4],
-            "Importe Potencia (€)": b[5]
+            "Importe Energía Reactiva (€)": b[3],
+            "Potencia Contratada (kW)": b[4],
+            "Potencia Máxima (kW)": b[5],
+            "Importe Potencia (€)": b[6]
         })
     return datos
 
@@ -48,33 +48,34 @@ if archivo_pdf:
 
     if datos_periodo:
         df = pd.DataFrame(datos_periodo)
+        df.columns = [str(col).strip() for col in df.columns]
 
-        # Limpieza de columnas numéricas
-        for col in ["Importe Potencia (€)", "Importe Energía Reactiva (€)"]:
-            df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
+        # Limpiar y convertir columnas a numérico
+        df["Importe Potencia (€)"] = df["Importe Potencia (€)"].str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
+        df["Importe Energía Reactiva (€)"] = df["Importe Energía Reactiva (€)"].str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
 
         total_potencia = df["Importe Potencia (€)"].sum()
         total_reactiva = df["Importe Energía Reactiva (€)"].sum()
 
-        # Agregar columna del periodo de facturación
         df["Periodo de Facturación"] = periodo_facturacion if periodo_facturacion else ""
 
-        # Fila de totales
         fila_total = {
             "Periodo": "TOTAL",
             "Energía Activa (kWh)": "",
             "Energía Reactiva (kVArh)": "",
             "Importe Energía Reactiva (€)": total_reactiva,
+            "Potencia Contratada (kW)": "",
             "Potencia Máxima (kW)": "",
             "Importe Potencia (€)": total_potencia,
             "Periodo de Facturación": "TOTAL FACTURA: " + (total_factura if total_factura else "")
         }
         df = pd.concat([df, pd.DataFrame([fila_total])], ignore_index=True)
 
-        # Mostrar con formato europeo
         df_display = df.copy()
         for col in ["Importe Potencia (€)", "Importe Energía Reactiva (€)"]:
-            df_display[col] = df_display[col].apply(lambda x: f"{x:,.2f}".replace(".", ",") if isinstance(x, float) else x)
+            df_display[col] = df_display[col].apply(
+                lambda x: f"{x:,.2f}".replace(".", ",") if isinstance(x, float) else x
+            )
 
         st.subheader("📊 Datos por periodo")
         st.dataframe(df_display)
@@ -83,9 +84,7 @@ if archivo_pdf:
             st.markdown(f"📆 **Periodo de facturación:** {periodo_facturacion}")
         if total_factura:
             st.markdown(f"🧾 **Total factura general:** {total_factura} €")
-        st.markdown(f"⚡ **Total Importe Energía Reactiva (€):** {total_reactiva:,.2f} €".replace(".", ","))
 
-        # Exportar a Excel
         salida_excel = BytesIO()
         df_display.to_excel(salida_excel, index=False, engine='openpyxl')
         salida_excel.seek(0)
