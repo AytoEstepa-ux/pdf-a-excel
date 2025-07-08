@@ -40,7 +40,7 @@ def extraer_tabla_energia_y_potencia(texto):
     """
     patron = re.compile(
         r"Periodo\s+([1-6])(?:\s+Capacitiva)?\s+"
-        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
+        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
         r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)"
     )
 
@@ -80,12 +80,23 @@ if uploaded_file is not None:
     # Extraer tabla por periodo
     df_detalle = extraer_tabla_energia_y_potencia(texto)
 
+    # Sumar los totales
+    total_consumo_kwh = df_detalle["Consumo kWh"].sum()
+    total_importe_reactiva = df_detalle["Importe Reactiva (€)"].sum()
+    total_importe_potencia = df_detalle["Importe Potencia (€)"].sum()
+
     # Mostrar los resultados
     st.subheader("📋 Resumen de la Factura")
     st.dataframe(df_resumen)
 
     st.subheader("📊 Energía y Potencia por Periodo")
     st.dataframe(df_detalle)
+
+    # Mostrar totales
+    st.subheader("🔢 Totales")
+    st.write(f"Total Consumo (kWh): {total_consumo_kwh:.2f} kWh")
+    st.write(f"Total Importe Reactiva (€): {total_importe_reactiva:.2f} €")
+    st.write(f"Total Importe Potencia (€): {total_importe_potencia:.2f} €")
 
     # Generar Excel
     output = io.BytesIO()
@@ -101,4 +112,5 @@ if uploaded_file is not None:
         file_name="factura_endesa.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
