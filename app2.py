@@ -3,15 +3,15 @@ import pandas as pd
 import fitz  # PyMuPDF
 import re
 import io
+from collections import defaultdict
 
 st.set_page_config(page_title="Factura Endesa a Excel", layout="centered")
 
 st.title("📄 Convertidor PDF → Excel: Factura Endesa")
 
-# Cargar múltiples archivos PDF
+# Subir múltiples PDFs
 uploaded_files = st.file_uploader("Sube tus facturas en PDF", type=["pdf"], accept_multiple_files=True)
 
-# Función para extraer los datos generales de la factura
 def extraer_datos_generales(texto):
     campos = {
         "Factura nº": r"Factura nº:\s*([A-Z0-9]+)",
@@ -35,19 +35,22 @@ def extraer_datos_generales(texto):
 
     return resultados
 
-# Función para extraer la tabla de energía y potencia
-def extraer_tabla_energia_y_potencia(texto):
+def extraer_tabla_energia_y_potencia(texto, periodo_facturacion):
+    """
+    Busca patrones del tipo P1 a P6 y extrae las cifras de energía y potencia por periodo.
+    """
     patron = re.compile(
-        r"Periodo\s+([1-6])(?:\s+Capacitiva)?\s+"
-        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
-        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
-        r"([\d.,]+)\s+([\d.,]+)"
+        r"Periodo\s+([1-6])(?:\s+Capacitiva)?\s+"  # P1 a P6
+        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+" 
+        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+" 
+        r"([\d.,]+)"
     )
 
     filas = []
     for match in patron.finditer(texto):
         valores = [match.group(i).replace('.', '').replace(',', '.') for i in range(1, 13)]
         fila = {
+            "Periodo Facturación": periodo_facturacion,
             "Periodo": f"P{valores[0]}",
             "Consumo kWh": float(valores[1]),
             "Reactiva (kVArh)": float(valores[2]),
@@ -65,63 +68,53 @@ def extraer_tabla_energia_y_potencia(texto):
 
     return pd.DataFrame(filas)
 
-# Función para procesar cada archivo PDF
-def procesar_archivo_pdf(pdf_file):
-    # Abrir y leer el archivo PDF
-    with fitz.open(stream=pdf_file.read(), filetype="pdf") as doc:
-        texto = ""
-        for page in doc:
-            texto += page.get_text()
-
-    # Extraer los datos generales
-    resumen_dict = extraer_datos_generales(texto)
-    df_resumen = pd.DataFrame([resumen_dict])
-
-    # Extraer la tabla de energía y potencia
-    df_detalle = extraer_tabla_energia_y_potencia(texto)
-
-    return df_resumen, df_detalle
-
-# Procesar si hay archivos cargados
 if uploaded_files:
-    resumen_list = []
-    detalle_list = []
+    all_resumen = []
+    all_detalle = []
 
-    # Iterar sobre todos los archivos subidos
     for uploaded_file in uploaded_files:
-        st.write(f"Procesando archivo: {uploaded_file.name}")
-        
-        # Procesar cada archivo
-        df_resumen, df_detalle = procesar_archivo_pdf(uploaded_file)
-        
-        # Añadir los datos de cada archivo a las listas
-        resumen_list.append(df_resumen)
-        detalle_list.append(df_detalle)
+        with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
+            texto = ""
+            for page in doc:
+                texto += page.get_text()
 
-    # Concatenar todos los resúmenes y detalles en un solo DataFrame
-    df_resumen_final = pd.concat(resumen_list, ignore_index=True)
-    df_detalle_final = pd.concat(detalle_list, ignore_index=True)
+        st.success(f"✅ PDF procesado correctamente: {uploaded_file.name}")
+
+        # Extraer datos generales
+        resumen_dict = extraer_datos_generales(texto)
+        df_resumen = pd.DataFrame([resumen_dict])
+        all_resumen.append(df_resumen)
+
+        # Extraer tabla por periodo
+        periodo_facturacion = resumen_dict.get("Periodo Facturación", "Desconocido")
+        df_detalle = extraer_tabla_energia_y_potencia(texto, periodo_facturacion)
+        all_detalle.append(df_detalle)
+
+    # Combinar todos los datos en un solo DataFrame
+    df_resumen_total = pd.concat(all_resumen, ignore_index=True)
+    df_detalle_total = pd.concat(all_detalle, ignore_index=True)
 
     # Mostrar los resultados
-    st.subheader("📋 Resumen de las Facturas")
-    st.dataframe(df_resumen_final)
+    st.subheader("📋 Resumen de todas las Facturas")
+    st.dataframe(df_resumen_total)
 
-    st.subheader("📊 Energía y Potencia por Periodo (de todas las facturas)")
-    st.dataframe(df_detalle_final)
+    st.subheader("📊 Energía y Potencia por Periodo (Acumulado)")
+    st.dataframe(df_detalle_total)
 
     # Generar Excel
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        df_resumen_final.to_excel(writer, sheet_name="Resumen Factura", index=False)
-        df_detalle_final.to_excel(writer, sheet_name="Energía y Potencia", index=False)
+        df_resumen_total.to_excel(writer, sheet_name="Resumen Factura", index=False)
+        df_detalle_total.to_excel(writer, sheet_name="Energía y Potencia", index=False)
     output.seek(0)
 
     # Botón de descarga
     st.download_button(
-        label="⬇️ Descargar Excel Consolidado",
+        label="⬇️ Descargar Excel",
         data=output,
-        file_name="facturas_endesa_consolidadas.xlsx",
+        file_name="facturas_endesa_acumuladas.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
