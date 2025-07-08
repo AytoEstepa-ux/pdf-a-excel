@@ -3,7 +3,6 @@ import pandas as pd
 import fitz  # PyMuPDF
 import re
 import io
-from collections import defaultdict
 
 st.set_page_config(page_title="Factura Endesa a Excel", layout="centered")
 
@@ -35,9 +34,6 @@ def extraer_datos_generales(texto):
     return resultados
 
 def extraer_tabla_energia_y_potencia(texto):
-    """
-    Busca patrones del tipo P1 a P6 y extrae las cifras de energía y potencia por periodo.
-    """
     patron = re.compile(
         r"Periodo\s+([1-6])(?:\s+Capacitiva)?\s+"
         r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
@@ -79,6 +75,19 @@ if uploaded_file is not None:
 
     # Extraer tabla por periodo
     df_detalle = extraer_tabla_energia_y_potencia(texto)
+
+    # Mostrar los datos extraídos para ver cómo está la tabla
+    st.subheader("📊 Energía y Potencia por Periodo (Datos Extraídos)")
+    st.write(df_detalle)
+
+    # Verificar si las columnas están bien convertidas a numérico
+    st.write("Verificando el tipo de las columnas:")
+    st.write(df_detalle.dtypes)
+
+    # Si hay valores NaN en las columnas de los totales, intentar convertirlos a números
+    df_detalle["Consumo kWh"] = pd.to_numeric(df_detalle["Consumo kWh"], errors="coerce")
+    df_detalle["Importe Reactiva (€)"] = pd.to_numeric(df_detalle["Importe Reactiva (€)"], errors="coerce")
+    df_detalle["Importe Potencia (€)"] = pd.to_numeric(df_detalle["Importe Potencia (€)"], errors="coerce")
 
     # Sumar los totales
     total_consumo_kwh = df_detalle["Consumo kWh"].sum()
