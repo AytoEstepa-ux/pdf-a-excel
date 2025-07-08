@@ -17,49 +17,30 @@ def extraer_total_factura(texto):
     match = re.search(r"Total Factura\s+([\d.,]+)", texto)
     return match.group(1) if match else None
 
-def extraer_energia(texto):
-    bloques = re.findall(
-        r"Periodo\s+(\d)\s+"              # b[0]: Periodo
-        r"([\d.,]+)\s+"                   # b[1]: Energía Activa (kWh)
-        r"([\d.,]+)\s+"                   # b[2]: Energía Reactiva (kVArh)
-        r"[\d.,]+\s+"                     # Ignorar exceso
-        r"[\d.,]+",                       # Ignorar CosΦ
-        texto
-    )
+def extraer_energia_potencia_comb(texto):
+    lineas = texto.splitlines()
     datos = []
-    for b in bloques:
-        datos.append({
-            "Periodo": f"P{b[0]}",
-            "Energía Activa (kWh)": b[1],
-            "Energía Reactiva (kVArh)": b[2]
-        })
-    return datos
-
-def extraer_potencia(texto):
-    bloques = re.findall(
-        r"Periodo\s+(\d)\s+"              # b[0]: Periodo
-        r"[\d.,]+\s+"                     # Ignorar Energía Activa
-        r"[\d.,]+\s+"                     # Ignorar Energía Reactiva
-        r"[\d.,]+\s+"                     # Ignorar Excesos
-        r"[\d.,]+\s+"                     # Ignorar CosΦ
-        r"([\d.,]+)\s+"                   # b[1]: Potencia Contratada (kW)
-        r"([\d.,]+)\s+"                   # b[2]: Potencia Máxima (kW)
-        r"[\d.,]+\s+"                     # Ignorar Kp
-        r"[\d.,]+\s+"                     # Ignorar Te
-        r"[\d.,]+\s+"                     # Ignorar Excesos
-        r"([\d.,]+)\s+"                   # b[3]: Importe Energía Reactiva (€)
-        r"([\d.,]+)",                     # b[4]: Importe Potencia (€)
-        texto
-    )
-    datos = []
-    for b in bloques:
-        datos.append({
-            "Periodo": f"P{b[0]}",
-            "Potencia Contratada (kW)": b[1],
-            "Potencia Máxima (kW)": b[2],
-            "Importe Energía Reactiva (€)": b[3],
-            "Importe Potencia (€)": b[4]
-        })
+    for i in range(len(lineas) - 1):
+        if re.match(r"Periodo\s+\d", lineas[i]):
+            energia = re.findall(r"Periodo\s+(\d)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)", lineas[i])
+            potencia = re.findall(r"([\d.,]+)\s+([\d.,]+)\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)\s+([\d.,]+)", lineas[i+1])
+            
+            if energia and potencia:
+                p, act, react, exc_kvarh, cosphi, imp_energia = energia[0]
+                pot_contr, pot_max, exc_kw, imp_potencia = potencia[0]
+                
+                datos.append({
+                    "Periodo": f"P{p}",
+                    "Energía Activa (kWh)": act,
+                    "Energía Reactiva (kVArh)": react,
+                    "Excesos (kVArh)": exc_kvarh,
+                    "Cos φ": cosphi,
+                    "Importe Energía (€)": imp_energia,
+                    "Potencia Contratada (kW)": pot_contr,
+                    "Potencia Máxima (kW)": pot_max,
+                    "Excesos (kW)": exc_kw,
+                    "Importe Excesos Potencia (€)": imp_potencia
+                })
     return datos
 
 if archivo_pdf:
@@ -70,45 +51,46 @@ if archivo_pdf:
 
     periodo_facturacion = extraer_periodo_facturacion(texto)
     total_factura = extraer_total_factura(texto)
-    datos_energia = extraer_energia(texto)
-    datos_potencia = extraer_potencia(texto)
+    datos = extraer_energia_potencia_comb(texto)
 
-    if datos_energia and datos_potencia:
-        df_energia = pd.DataFrame(datos_energia)
-        df_potencia = pd.DataFrame(datos_potencia)
+    if datos:
+        df = pd.DataFrame(datos)
 
-        df = pd.merge(df_energia, df_potencia, on="Periodo", how="outer")
-
-        # Convertir columnas monetarias a float
-        for col in ["Importe Energía Reactiva (€)", "Importe Potencia (€)"]:
+        # Convertir columnas numéricas (monetarias) a float
+        columnas_float = [
+            "Importe Energía (€)",
+            "Excesos (kVArh)",
+            "Excesos (kW)",
+            "Importe Excesos Potencia (€)"
+        ]
+        for col in columnas_float:
             df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
-
-        total_reactiva = df["Importe Energía Reactiva (€)"].sum()
-        total_potencia = df["Importe Potencia (€)"].sum()
 
         df["Periodo de Facturación"] = periodo_facturacion if periodo_facturacion else ""
 
-        # Fila total
         fila_total = {
             "Periodo": "TOTAL",
             "Energía Activa (kWh)": "",
             "Energía Reactiva (kVArh)": "",
+            "Excesos (kVArh)": df["Excesos (kVArh)"].sum(),
+            "Cos φ": "",
+            "Importe Energía (€)": df["Importe Energía (€)"].sum(),
             "Potencia Contratada (kW)": "",
             "Potencia Máxima (kW)": "",
-            "Importe Energía Reactiva (€)": total_reactiva,
-            "Importe Potencia (€)": total_potencia,
+            "Excesos (kW)": df["Excesos (kW)"].sum(),
+            "Importe Excesos Potencia (€)": df["Importe Excesos Potencia (€)"].sum(),
             "Periodo de Facturación": "TOTAL FACTURA: " + (total_factura if total_factura else "")
         }
         df = pd.concat([df, pd.DataFrame([fila_total])], ignore_index=True)
 
         # Formato visual
         df_display = df.copy()
-        for col in ["Importe Energía Reactiva (€)", "Importe Potencia (€)"]:
+        for col in ["Importe Energía (€)", "Importe Excesos Potencia (€)"]:
             df_display[col] = df_display[col].apply(
                 lambda x: f"{x:,.2f}".replace(".", ",") if isinstance(x, float) else x
             )
 
-        st.subheader("📊 Datos por periodo")
+        st.subheader("📊 Datos por periodo (energía y potencia)")
         st.dataframe(df_display)
 
         if periodo_facturacion:
@@ -127,4 +109,5 @@ if archivo_pdf:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.error("❌ No se encontraron datos por periodo en el PDF.")
+        st.error("❌ No se encontraron datos de energía y potencia en el PDF.")
+
