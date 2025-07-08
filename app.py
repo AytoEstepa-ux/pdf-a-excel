@@ -36,12 +36,10 @@ def extraer_energia_potencia_comb(texto):
             # Leer línea siguiente como potencia
             if i + 1 < len(lineas):
                 linea_potencia = lineas[i + 1].strip()
-                potencia_match = re.match(
-                    r"([\d.,]+)\s+([\d.,]+)\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)\s+([\d.,]+)", linea_potencia
-                )
-
-                if potencia_match:
-                    pot_contr, pot_max, exc_kw, imp_potencia = potencia_match.groups()
+                # Extraer todos los números con decimales o separadores
+                partes = re.findall(r"[\d.,]+", linea_potencia)
+                if len(partes) >= 4:
+                    pot_contr, pot_max, exc_kw, imp_potencia = partes[:4]
 
                     datos.append({
                         "Periodo": f"P{p}",
