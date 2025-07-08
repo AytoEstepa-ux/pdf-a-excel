@@ -3,15 +3,15 @@ import pandas as pd
 import fitz  # PyMuPDF
 import re
 import io
-from collections import defaultdict
 
 st.set_page_config(page_title="Factura Endesa a Excel", layout="centered")
 
 st.title("📄 Convertidor PDF → Excel: Factura Endesa")
 
-# Modificamos la carga de archivos para permitir múltiples archivos
+# Cargar múltiples archivos PDF
 uploaded_files = st.file_uploader("Sube tus facturas en PDF", type=["pdf"], accept_multiple_files=True)
 
+# Función para extraer los datos generales de la factura
 def extraer_datos_generales(texto):
     campos = {
         "Factura nº": r"Factura nº:\s*([A-Z0-9]+)",
@@ -35,6 +35,7 @@ def extraer_datos_generales(texto):
 
     return resultados
 
+# Función para extraer la tabla de energía y potencia
 def extraer_tabla_energia_y_potencia(texto):
     patron = re.compile(
         r"Periodo\s+([1-6])(?:\s+Capacitiva)?\s+"
@@ -64,33 +65,36 @@ def extraer_tabla_energia_y_potencia(texto):
 
     return pd.DataFrame(filas)
 
+# Función para procesar cada archivo PDF
 def procesar_archivo_pdf(pdf_file):
-    # Procesar cada archivo PDF y extraer datos
+    # Abrir y leer el archivo PDF
     with fitz.open(stream=pdf_file.read(), filetype="pdf") as doc:
         texto = ""
         for page in doc:
             texto += page.get_text()
 
-    # Extraer datos generales y tabla de energía/potencia
+    # Extraer los datos generales
     resumen_dict = extraer_datos_generales(texto)
     df_resumen = pd.DataFrame([resumen_dict])
+
+    # Extraer la tabla de energía y potencia
     df_detalle = extraer_tabla_energia_y_potencia(texto)
 
     return df_resumen, df_detalle
 
-if uploaded_files is not None:
-    # Listas para almacenar los DataFrames de cada archivo PDF
+# Procesar si hay archivos cargados
+if uploaded_files:
     resumen_list = []
     detalle_list = []
 
-    # Iteramos sobre todos los archivos subidos
+    # Iterar sobre todos los archivos subidos
     for uploaded_file in uploaded_files:
         st.write(f"Procesando archivo: {uploaded_file.name}")
         
-        # Procesar cada archivo PDF
+        # Procesar cada archivo
         df_resumen, df_detalle = procesar_archivo_pdf(uploaded_file)
         
-        # Agregar los resultados de cada archivo a las listas
+        # Añadir los datos de cada archivo a las listas
         resumen_list.append(df_resumen)
         detalle_list.append(df_detalle)
 
@@ -119,4 +123,5 @@ if uploaded_files is not None:
         file_name="facturas_endesa_consolidadas.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
