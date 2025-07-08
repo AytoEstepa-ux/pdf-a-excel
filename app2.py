@@ -65,16 +65,15 @@ def extraer_tabla_energia_y_potencia(texto):
     return pd.DataFrame(filas)
 
 def procesar_archivo_pdf(pdf_file):
+    # Procesar cada archivo PDF y extraer datos
     with fitz.open(stream=pdf_file.read(), filetype="pdf") as doc:
         texto = ""
         for page in doc:
             texto += page.get_text()
 
-    # Extraer datos generales
+    # Extraer datos generales y tabla de energía/potencia
     resumen_dict = extraer_datos_generales(texto)
     df_resumen = pd.DataFrame([resumen_dict])
-
-    # Extraer tabla de energía y potencia
     df_detalle = extraer_tabla_energia_y_potencia(texto)
 
     return df_resumen, df_detalle
@@ -84,11 +83,14 @@ if uploaded_files is not None:
     resumen_list = []
     detalle_list = []
 
+    # Iteramos sobre todos los archivos subidos
     for uploaded_file in uploaded_files:
         st.write(f"Procesando archivo: {uploaded_file.name}")
         
+        # Procesar cada archivo PDF
         df_resumen, df_detalle = procesar_archivo_pdf(uploaded_file)
         
+        # Agregar los resultados de cada archivo a las listas
         resumen_list.append(df_resumen)
         detalle_list.append(df_detalle)
 
@@ -117,3 +119,4 @@ if uploaded_files is not None:
         file_name="facturas_endesa_consolidadas.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
