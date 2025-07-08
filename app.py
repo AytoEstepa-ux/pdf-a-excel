@@ -1,4 +1,4 @@
-import streamlit as st 
+import streamlit as st  
 import pdfplumber
 import pandas as pd
 import re
@@ -18,29 +18,49 @@ def extraer_total_factura(texto):
     return match.group(1) if match else None
 
 def extraer_energia_potencia_comb(texto):
-    lineas = texto.splitlines()
     datos = []
-    for i in range(len(lineas) - 1):
-        if re.match(r"Periodo\s+\d", lineas[i]):
-            energia = re.findall(r"Periodo\s+(\d)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)", lineas[i])
-            potencia = re.findall(r"([\d.,]+)\s+([\d.,]+)\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)\s+([\d.,]+)", lineas[i+1])
-            
-            if energia and potencia:
-                p, act, react, exc_kvarh, cosphi, imp_energia = energia[0]
-                pot_contr, pot_max, exc_kw, imp_potencia = potencia[0]
-                
-                datos.append({
-                    "Periodo": f"P{p}",
-                    "Energía Activa (kWh)": act,
-                    "Energía Reactiva (kVArh)": react,
-                    "Excesos (kVArh)": exc_kvarh,
-                    "Cos φ": cosphi,
-                    "Importe Energía (€)": imp_energia,
-                    "Potencia Contratada (kW)": pot_contr,
-                    "Potencia Máxima (kW)": pot_max,
-                    "Excesos (kW)": exc_kw,
-                    "Importe Excesos Potencia (€)": imp_potencia
-                })
+    lineas = texto.splitlines()
+
+    i = 0
+    while i < len(lineas):
+        linea = lineas[i].strip()
+
+        # Línea que empieza con 'Periodo' y contiene energía
+        energia_match = re.match(
+            r"Periodo\s+(\d).*?([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)", linea
+        )
+
+        if energia_match:
+            p, act, react, exc_kvarh, cosphi, imp_energia = energia_match.groups()
+
+            # Leer línea siguiente como potencia
+            if i + 1 < len(lineas):
+                linea_potencia = lineas[i + 1].strip()
+                potencia_match = re.match(
+                    r"([\d.,]+)\s+([\d.,]+)\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)\s+([\d.,]+)", linea_potencia
+                )
+
+                if potencia_match:
+                    pot_contr, pot_max, exc_kw, imp_potencia = potencia_match.groups()
+
+                    datos.append({
+                        "Periodo": f"P{p}",
+                        "Energía Activa (kWh)": act,
+                        "Energía Reactiva (kVArh)": react,
+                        "Excesos (kVArh)": exc_kvarh,
+                        "Cos φ": cosphi,
+                        "Importe Energía (€)": imp_energia,
+                        "Potencia Contratada (kW)": pot_contr,
+                        "Potencia Máxima (kW)": pot_max,
+                        "Excesos (kW)": exc_kw,
+                        "Importe Excesos Potencia (€)": imp_potencia
+                    })
+
+                    i += 2
+                    continue
+
+        i += 1
+
     return datos
 
 if archivo_pdf:
@@ -110,4 +130,5 @@ if archivo_pdf:
         )
     else:
         st.error("❌ No se encontraron datos de energía y potencia en el PDF.")
+
 
