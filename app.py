@@ -17,49 +17,68 @@ def extraer_total_factura(texto):
     match = re.search(r"Total Factura\s+([\d.,]+)", texto)
     return match.group(1) if match else None
 
-def extraer_energia_potencia_comb(texto):
-    datos = []
+def extraer_tablas_energia_potencia(texto):
     lineas = texto.splitlines()
 
-    i = 0
-    while i < len(lineas):
-        linea = lineas[i].strip()
+    energia_data = {}
+    potencia_data = {}
 
-        # Línea que empieza con 'Periodo' y contiene energía
-        energia_match = re.match(
-            r"Periodo\s+(\d).*?([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)", linea
-        )
+    # Patrones para identificar línea de energía y potencia
+    # Ajusta estos patrones a cómo aparece en tu texto real
+    patron_energia = re.compile(
+        r"Periodo\s+(\d+).*?([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)"
+    )
+    patron_potencia = re.compile(
+        r"Periodo\s+(\d+).*?([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)"
+    )
 
-        if energia_match:
-            p, act, react, exc_kvarh, cosphi, imp_energia = energia_match.groups()
+    for linea in lineas:
+        linea = linea.strip()
+        # Buscar energía
+        m_energia = patron_energia.match(linea)
+        if m_energia:
+            p, act, react, exc_kvarh, cosphi, imp_energia = m_energia.groups()
+            energia_data[p] = {
+                "Energía Activa (kWh)": act,
+                "Energía Reactiva (kVArh)": react,
+                "Excesos (kVArh)": exc_kvarh,
+                "Cos φ": cosphi,
+                "Importe Energía (€)": imp_energia
+            }
+            continue
 
-            # Leer línea siguiente como potencia
-            if i + 1 < len(lineas):
-                linea_potencia = lineas[i + 1].strip()
-                # Extraer todos los números con decimales o separadores
-                partes = re.findall(r"[\d.,]+", linea_potencia)
-                if len(partes) >= 4:
-                    pot_contr, pot_max, exc_kw, imp_potencia = partes[:4]
+        # Buscar potencia
+        m_potencia = patron_potencia.match(linea)
+        if m_potencia:
+            p, pot_contr, pot_max, exc_kw, imp_potencia = m_potencia.groups()
+            potencia_data[p] = {
+                "Potencia Contratada (kW)": pot_contr,
+                "Potencia Máxima (kW)": pot_max,
+                "Excesos (kW)": exc_kw,
+                "Importe Excesos Potencia (€)": imp_potencia
+            }
 
-                    datos.append({
-                        "Periodo": f"P{p}",
-                        "Energía Activa (kWh)": act,
-                        "Energía Reactiva (kVArh)": react,
-                        "Excesos (kVArh)": exc_kvarh,
-                        "Cos φ": cosphi,
-                        "Importe Energía (€)": imp_energia,
-                        "Potencia Contratada (kW)": pot_contr,
-                        "Potencia Máxima (kW)": pot_max,
-                        "Excesos (kW)": exc_kw,
-                        "Importe Excesos Potencia (€)": imp_potencia
-                    })
+    # Ahora combinar ambos dicts por periodo
+    datos_combinados = []
+    for p in sorted(set(energia_data.keys()).union(potencia_data.keys())):
+        fila = {"Periodo": f"P{p}"}
+        fila.update(energia_data.get(p, {
+            "Energía Activa (kWh)": "",
+            "Energía Reactiva (kVArh)": "",
+            "Excesos (kVArh)": "",
+            "Cos φ": "",
+            "Importe Energía (€)": ""
+        }))
+        fila.update(potencia_data.get(p, {
+            "Potencia Contratada (kW)": "",
+            "Potencia Máxima (kW)": "",
+            "Excesos (kW)": "",
+            "Importe Excesos Potencia (€)": ""
+        }))
+        datos_combinados.append(fila)
 
-                    i += 2
-                    continue
+    return datos_combinados
 
-        i += 1
-
-    return datos
 
 if archivo_pdf:
     texto = ""
@@ -69,7 +88,7 @@ if archivo_pdf:
 
     periodo_facturacion = extraer_periodo_facturacion(texto)
     total_factura = extraer_total_factura(texto)
-    datos = extraer_energia_potencia_comb(texto)
+    datos = extraer_tablas_energia_potencia(texto)
 
     if datos:
         df = pd.DataFrame(datos)
@@ -82,7 +101,8 @@ if archivo_pdf:
             "Importe Excesos Potencia (€)"
         ]
         for col in columnas_float:
-            df[col] = df[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False).astype(float)
+            df[col] = df[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
         df["Periodo de Facturación"] = periodo_facturacion if periodo_facturacion else ""
 
@@ -105,7 +125,7 @@ if archivo_pdf:
         df_display = df.copy()
         for col in ["Importe Energía (€)", "Importe Excesos Potencia (€)"]:
             df_display[col] = df_display[col].apply(
-                lambda x: f"{x:,.2f}".replace(".", ",") if isinstance(x, float) else x
+                lambda x: f"{x:,.2f}".replace(".", ",") if isinstance(x, (float, int)) else x
             )
 
         st.subheader("📊 Datos por periodo (energía y potencia)")
@@ -128,5 +148,6 @@ if archivo_pdf:
         )
     else:
         st.error("❌ No se encontraron datos de energía y potencia en el PDF.")
+
 
 
