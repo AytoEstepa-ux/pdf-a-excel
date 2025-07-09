@@ -108,23 +108,42 @@ def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo
 
     if match:
         st.write("✅ Se encontró bloque de excesos de potencia.")
-        lineas = match.group(1).strip().split("P")[1:]
+        lineas = match.group(1).strip().split("P")[1:]  # Se omite cabecera y se procesan las líneas
+        
         for linea in lineas:
             partes = linea.strip().split()
-            if len(partes) >= 4:
+            if len(partes) >= 5:  # Al menos 5 partes (Periodo, Contratada, Demandada, A facturar)
                 periodo = f"P{partes[0]}"
-                a_facturar = float(partes[3].replace('.', '').replace(',', '.'))
+                
+                try:
+                    contratada = float(partes[1].replace('.', '').replace(',', '.'))
+                except ValueError:
+                    contratada = 0.0
+                    
+                try:
+                    demandada = float(partes[2].replace('.', '').replace(',', '.'))
+                except ValueError:
+                    demandada = 0.0
+                    
+                try:
+                    a_facturar = float(partes[4].replace('.', '').replace(',', '.'))
+                except ValueError:
+                    a_facturar = 0.0
+                
                 datos.append({
                     "Archivo": nombre_archivo,
                     "Periodo desde": periodo_desde,
                     "Periodo hasta": periodo_hasta,
                     "Periodo": periodo,
+                    "Contratada (kW)": contratada,
+                    "Demandada (kW)": demandada,
                     "A facturar (kW)": a_facturar
                 })
     else:
         st.warning(f"❌ No se encontró bloque de excesos de potencia en {nombre_archivo}")
 
     return pd.DataFrame(datos)
+
 
 # ---------------------- EXPORTAR A EXCEL ----------------------
 def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
