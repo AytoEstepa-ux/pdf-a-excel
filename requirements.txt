@@ -1,5 +1,7 @@
 streamlit
 pandas
-PyMuPDF
+pymupdf
+pdf2image
+pytesseract
+pillow
 xlsxwriter
-
