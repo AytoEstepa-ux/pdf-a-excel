@@ -101,15 +101,15 @@ def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archiv
     return pd.DataFrame(datos)
 
 
-def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    patron = r"EXCESOS\s+DE\s+POTENCIA.*?Periodo\s+horario.*?Contratada.*?Demandada.*?A\s+facturar(.*?)INFORMACIÓN\s+DE\s+SU\s+PRODUCTO"
+ddef extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo):
+    patron = r"EXCESOS\s+DE\s+POTENCIA\s+kW\s+.*?Periodo horario.*?Contratada.*?Demandada.*?A facturar\s+(.*?)INFORMACIÓN\s+DE\s+SU\s+PRODUCTO"
     match = re.search(patron, texto, re.DOTALL)
     datos = []
 
     if match:
         st.write("✅ Se encontró bloque de excesos de potencia.")
         bloque = match.group(1).strip()
-        lineas = bloque.split("P")[1:]  # omitir cabecera
+        lineas = bloque.split("P")[1:]  # Saltamos cabecera
         for linea in lineas:
             partes = linea.strip().split()
             if len(partes) >= 4:
@@ -120,15 +120,14 @@ def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo
                     a_facturar = float(partes[3].replace('.', '').replace(',', '.'))
                 except ValueError:
                     contratada = demandada = a_facturar = 0.0
-
                 datos.append({
                     "Archivo": nombre_archivo,
                     "Periodo desde": periodo_desde,
                     "Periodo hasta": periodo_hasta,
                     "Periodo": periodo,
-                    "Contratada": contratada,
-                    "Demandada": demandada,
-                    "A facturar": a_facturar
+                    "Contratada (kW)": contratada,
+                    "Demandada (kW)": demandada,
+                    "A facturar (€)": a_facturar
                 })
     else:
         st.warning(f"❌ No se encontró bloque de excesos de potencia en {nombre_archivo}")
