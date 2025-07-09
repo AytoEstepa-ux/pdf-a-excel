@@ -11,6 +11,9 @@ def leer_texto_pdf(file):
         texto = ""
         for page in doc:
             texto += page.get_text()
+    # Limpieza básica del texto
+    texto = texto.replace('\n', ' ')
+    texto = re.sub(r'\s{2,}', ' ', texto)
     return texto
 
 # ---------------------- EXTRACCIÓN DE DATOS ----------------------
@@ -35,16 +38,16 @@ def extraer_resumen_factura(texto):
     return pd.DataFrame([datos])
 
 def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    match = re.search(r"ENERGÍA ACTIVA.*?kWh([\s\S]+?)ENERGÍA REACTIVA", texto, re.IGNORECASE)
+    match = re.search(r"ENERGÍA\s+ACTIVA.*?kWh([\s\S]+?)ENERGÍA\s+REACTIVA", texto, re.IGNORECASE)
     datos = []
 
-    lectura_match = re.search(r"Lectura\s+Lectura\s*\n\s*(real|estimada)\s+(real|estimada)", texto, re.IGNORECASE)
+    lectura_match = re.search(r"Lectura\s+Lectura\s+(real|estimada)\s+(real|estimada)", texto, re.IGNORECASE)
     lectura_tipos = lectura_match.groups() if lectura_match else ("", "")
 
     if match:
         st.write("✅ Se encontró bloque de energía activa.")
-        for idx, linea in enumerate(match.group(1).splitlines()):
-            m = re.search(r"P(\d).*?([\d.,]+)$", linea)
+        for idx, linea in enumerate(match.group(1).split('P')):
+            m = re.search(r"(\d).*?([\d.,]+)$", linea)
             if m:
                 periodo = f"P{m.group(1)}"
                 consumo = float(m.group(2).replace('.', '').replace(',', '.'))
@@ -63,12 +66,12 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
     return pd.DataFrame(datos)
 
 def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    match = re.search(r"ENERGÍA REACTIVA INDUCTIVA.*?kWh([\s\S]+?)EXCESOS DE POTENCIA", texto, re.IGNORECASE)
+    match = re.search(r"ENERGÍA\s+REACTIVA\s+INDUCTIVA.*?kWh([\s\S]+?)EXCESOS\s+DE\s+POTENCIA", texto, re.IGNORECASE)
     datos = []
     if match:
         st.write("✅ Se encontró bloque de energía reactiva inductiva.")
-        for linea in match.group(1).splitlines():
-            m = re.search(r"P(\d).*?([\d.,]+)\s+([\d.,]+)$", linea)
+        for linea in match.group(1).split('P'):
+            m = re.search(r"(\d).*?([\d.,]+)\s+([\d.,]+)$", linea)
             if m:
                 datos.append({
                     "Archivo": nombre_archivo,
@@ -84,12 +87,12 @@ def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archiv
     return pd.DataFrame(datos)
 
 def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    match = re.search(r"EXCESOS DE POTENCIA.*?kW([\s\S]+?)INFORMACIÓN DE SU PRODUCTO", texto, re.IGNORECASE)
+    match = re.search(r"EXCESOS\s+DE\s+POTENCIA.*?kW([\s\S]+?)INFORMACIÓN\s+DE\s+SU\s+PRODUCTO", texto, re.IGNORECASE)
     datos = []
     if match:
         st.write("✅ Se encontró bloque de excesos de potencia.")
-        for linea in match.group(1).splitlines():
-            m = re.search(r"P(\d).*?([\d.,]+)$", linea)
+        for linea in match.group(1).split('P'):
+            m = re.search(r"(\d).*?([\d.,]+)$", linea)
             if m:
                 datos.append({
                     "Archivo": nombre_archivo,
@@ -106,7 +109,6 @@ def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo
 # ---------------------- EXPORTAR A EXCEL ----------------------
 
 def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
-    # Inicializar totales vacíos
     total_kwh = pd.DataFrame(columns=["Archivo", "Total Consumo (kWh)"])
     total_reactiva = pd.DataFrame(columns=["Archivo", "Total Reactiva (€)"])
     total_excesos = pd.DataFrame(columns=["Archivo", "Total Excesos (kW)"])
@@ -123,12 +125,10 @@ def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
         total_excesos = df_excesos.groupby("Archivo")["A facturar (kW)"].sum().reset_index()
         total_excesos.rename(columns={"A facturar (kW)": "Total Excesos (kW)"}, inplace=True)
 
-    # Unir todos los totales por archivo
     df_totales = pd.merge(total_kwh, total_reactiva, on="Archivo", how="outer")
     df_totales = pd.merge(df_totales, total_excesos, on="Archivo", how="outer")
     df_totales = df_totales.fillna(0)
 
-    # Crear archivo Excel
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df_resumenes.to_excel(writer, sheet_name="Resumen Factura", index=False)
