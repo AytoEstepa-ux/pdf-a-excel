@@ -164,31 +164,36 @@ if uploaded_files:
         df_resumen_total.to_excel(writer, sheet_name="Resumen Facturas", index=False)
         df_detalle_total.to_excel(writer, sheet_name="Energía y Potencia", index=False)
 
+        # Totales como nueva fila desplazados dos columnas para evitar conflicto con formato fecha
+        startrow = len(df_detalle_total) + 2
+        col_offset = 2  # desplazamiento de columnas
+
         workbook = writer.book
         worksheet_detalle = writer.sheets["Energía y Potencia"]
 
         # Formatos
+        bold_format = workbook.add_format({'bold': True})
         date_format = workbook.add_format({'num_format': 'dd/mm/yyyy'})
         number_format = workbook.add_format({'num_format': '#,##0.00'})
-        bold_format = workbook.add_format({'bold': True})
 
-        # Aplicar formato fecha a columnas Inicio y Fin Facturación
-        for col_name in ["Inicio Facturación", "Fin Facturación"]:
-            if col_name in detalle_cols:
-                col_idx = detalle_cols.index(col_name)
-                worksheet_detalle.set_column(col_idx, col_idx, 15, date_format)
+        # Aplicar formato fecha a las columnas de fechas en todo el rango
+        idx_inicio = df_detalle_total.columns.get_loc("Inicio Facturación")
+        idx_fin = df_detalle_total.columns.get_loc("Fin Facturación")
+        worksheet_detalle.set_column(idx_inicio, idx_inicio, 15, date_format)
+        worksheet_detalle.set_column(idx_fin, idx_fin, 15, date_format)
 
-        # Aplicar formato numérico a columnas numéricas
-        for col_name in ["Consumo kWh", "Reactiva (kVArh)", "Exceso Reactiva", "Importe Reactiva (€)", "Potencia Contratada",
-                         "Max. Registrada", "Kp", "Te", "Excesos Potencia", "Importe Potencia (€)"]:
-            if col_name in detalle_cols:
-                col_idx = detalle_cols.index(col_name)
-                worksheet_detalle.set_column(col_idx, col_idx, 15, number_format)
+        # Aplicar formato número a columnas numéricas (ajusta según columnas reales)
+        # Aquí todas menos fechas y texto
+        for i, col in enumerate(df_detalle_total.columns):
+            if col not in ["Inicio Facturación", "Fin Facturación", "Periodo", "Archivo"]:
+                worksheet_detalle.set_column(i, i, 15, number_format)
 
-        # Escribir fila total desplazada dos columnas a la derecha
-        startrow = len(df_detalle_total) + 2
-        col_offset = 2
+        # Escribir etiquetas encima de los totales (dos columnas desplazadas)
+        worksheet_detalle.write(startrow - 1, col_offset + 1, "Consumo", bold_format)
+        worksheet_detalle.write(startrow - 1, col_offset + 2, "Importe Reactiva", bold_format)
+        worksheet_detalle.write(startrow - 1, col_offset + 3, "Importe Potencia", bold_format)
 
+        # Escribir totales desplazados dos columnas a la derecha
         worksheet_detalle.write(startrow, col_offset + 0, "TOTAL", bold_format)  # Periodo
         worksheet_detalle.write_number(startrow, col_offset + 1, total_consumo_kwh, number_format)  # Consumo kWh
         worksheet_detalle.write_number(startrow, col_offset + 2, total_importe_reactiva, number_format)  # Importe Reactiva (€)
