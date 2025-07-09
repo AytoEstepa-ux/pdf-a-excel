@@ -1,4 +1,67 @@
-# ... [importaciones y funciones anteriores sin cambios] ...
+import streamlit as st
+import fitz  # PyMuPDF
+import pandas as pd
+import re
+import io
+
+# ---------------------- LECTURA PDF ----------------------
+def leer_texto_pdf(file):
+    with fitz.open(stream=file.read(), filetype="pdf") as doc:
+        texto = ""
+        for page in doc:
+            texto += page.get_text()
+    texto = texto.replace('\n', ' ')
+    texto = re.sub(r'\s{2,}', ' ', texto)
+    return texto
+
+# ---------------------- EXTRACCIÓN DE DATOS ----------------------
+def extraer_resumen_factura(texto):
+    campos = {
+        "Nº Factura": r"Nº de factura:\s*(\w+)",
+        "Fecha emisión": r"Fecha emisión factura:\s*(\d{2}/\d{2}/\d{4})",
+        "Periodo desde": r"del\s*(\d{2}/\d{2}/\d{4})",
+        "Periodo hasta": r"al\s*(\d{2}/\d{2}/\d{4})",
+        "Importe total (€)": r"IMPORTE\s+FACTURA[:\s]*([\d.,]+)",
+        "Cliente": r"Cliente\s+([A-ZÁÉÍÓÚÑ .,\d]+)",
+        "Dirección suministro": r"Dirección de suministro:\s*(.+?),",
+        "CUPS": r"CUPS:\s*([A-Z0-9]+)",
+        "Contrato Nº": r"Referencia del contrato:\s*(\d+)"
+    }
+
+    datos = {}
+    for clave, patron in campos.items():
+        match = re.search(patron, texto)
+        datos[clave] = match.group(1).strip() if match else ""
+    return pd.DataFrame([datos])
+
+def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
+    patron = r"ENERGÍA\s+ACTIVA\s+kWh\s+(.*?)ENERGÍA\s+REACTIVA"
+    match = re.search(patron, texto, re.DOTALL)
+    datos = []
+
+    if match:
+        st.write("✅ Se encontró bloque de energía activa.")
+        lineas = match.group(1).strip().split("P")[1:]  # Omitimos lo que hay antes de P1
+        for i, linea in enumerate(lineas):
+            partes = linea.strip().split()
+            if len(partes) >= 6:
+                consumo = partes[-1].replace('.', '').replace(',', '.')
+                try:
+                    consumo = float(consumo)
+                except ValueError:
+                    consumo = 0.0
+                datos.append({
+                    "Archivo": nombre_archivo,
+                    "Periodo desde": periodo_desde,
+                    "Periodo hasta": periodo_hasta,
+                    "Periodo": f"P{i+1}",
+                    "Consumo (kWh)": consumo,
+                    "Tipo Lectura": "Estimada"
+                })
+    else:
+        st.warning(f"❌ No se encontró bloque de energía activa en {nombre_archivo}")
+
+    return pd.DataFrame(datos)
 
 def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archivo):
     patron = r"ENERGÍA\s+REACTIVA\s+INDUCTIVA\s+kWh\s+Periodo horario(.*?)EXCESOS\s+DE\s+POTENCIA"
