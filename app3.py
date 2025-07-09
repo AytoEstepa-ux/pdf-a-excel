@@ -35,7 +35,7 @@ def extraer_resumen_factura(texto):
     return pd.DataFrame([datos])
 
 def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    match = re.search(r"ENERGÍA ACTIVA kWh([\s\S]+?)ENERGÍA REACTIVA", texto)
+    match = re.search(r"ENERGÍA ACTIVA kWh([\s\S]+?)ENERGÍA REACTIVA kVArh", texto, re.IGNORECASE)
     datos = []
 
     lectura_match = re.search(r"Lectura\s+Lectura\s*\n\s*(real|estimada)\s+(real|estimada)", texto, re.IGNORECASE)
@@ -60,7 +60,7 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
     return pd.DataFrame(datos)
 
 def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    match = re.search(r"ENERGÍA REACTIVA INDUCTIVA kWh([\s\S]+?)EXCESOS DE POTENCIA", texto)
+    match = re.search(r"ENERGÍA REACTIVA INDUCTIVA kWh([\s\S]+?)EXCESOS DE POTENCIA", texto, re.IGNORECASE)
     datos = []
     if match:
         for linea in match.group(1).splitlines():
@@ -77,7 +77,7 @@ def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archiv
     return pd.DataFrame(datos)
 
 def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    match = re.search(r"EXCESOS DE POTENCIA kW([\s\S]+?)INFORMACIÓN DE SU PRODUCTO", texto)
+    match = re.search(r"EXCESOS DE POTENCIA kW([\s\S]+?)INFORMACIÓN DE SU PRODUCTO", texto, re.IGNORECASE)
     datos = []
     if match:
         for linea in match.group(1).splitlines():
@@ -95,12 +95,29 @@ def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo
 # ---------------------- EXPORTAR A EXCEL ----------------------
 
 def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
+    # Calcular totales agrupados
+    total_kwh = df_activa.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
+    total_kwh.rename(columns={"Consumo (kWh)": "Total Consumo (kWh)"}, inplace=True)
+
+    total_reactiva = df_reactiva.groupby("Archivo")["A facturar (€)"].sum().reset_index()
+    total_reactiva.rename(columns={"A facturar (€)": "Total Reactiva (€)"}, inplace=True)
+
+    total_excesos = df_excesos.groupby("Archivo")["A facturar (kW)"].sum().reset_index()
+    total_excesos.rename(columns={"A facturar (kW)": "Total Excesos (kW)"}, inplace=True)
+
+    # Unir todos los totales por archivo
+    df_totales = pd.merge(total_kwh, total_reactiva, on="Archivo", how="outer")
+    df_totales = pd.merge(df_totales, total_excesos, on="Archivo", how="outer")
+    df_totales = df_totales.fillna(0)
+
+    # Crear archivo Excel
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df_resumenes.to_excel(writer, sheet_name="Resumen Factura", index=False)
         df_activa.to_excel(writer, sheet_name="Energía Activa", index=False)
         df_reactiva.to_excel(writer, sheet_name="Energía Reactiva", index=False)
         df_excesos.to_excel(writer, sheet_name="Excesos Potencia", index=False)
+        df_totales.to_excel(writer, sheet_name="Totales por Archivo", index=False)
     return output.getvalue()
 
 # ---------------------- STREAMLIT APP ----------------------
@@ -108,7 +125,7 @@ def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
 st.set_page_config(page_title="Facturas Eléctricas", layout="wide")
 st.title("🔄 Procesador de múltiples facturas eléctricas")
 
-archivos = st.file_uploader("📑 Sube varios archivos PDF", type="pdf", accept_multiple_files=True)
+archivos = st.file_uploader("📁 Sube varios archivos PDF", type="pdf", accept_multiple_files=True)
 
 if archivos:
     resumenes = []
@@ -157,7 +174,7 @@ if archivos:
     excel_bytes = generar_excel_acumulado(df_resumenes, df_activas, df_reactivas, df_excesos)
 
     st.download_button(
-        label="📥 Descargar Excel acumulado",
+        label="📅 Descargar Excel acumulado",
         data=excel_bytes,
         file_name="facturas_acumuladas.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
