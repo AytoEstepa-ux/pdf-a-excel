@@ -35,15 +35,16 @@ def extraer_resumen_factura(texto):
     return pd.DataFrame([datos])
 
 def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    match = re.search(r"ENERGÍA ACTIVA kWh([\s\S]+?)ENERGÍA REACTIVA kVArh", texto, re.IGNORECASE)
+    match = re.search(r"ENERGÍA ACTIVA.*?kWh([\s\S]+?)ENERGÍA REACTIVA", texto, re.IGNORECASE)
     datos = []
 
     lectura_match = re.search(r"Lectura\s+Lectura\s*\n\s*(real|estimada)\s+(real|estimada)", texto, re.IGNORECASE)
     lectura_tipos = lectura_match.groups() if lectura_match else ("", "")
 
     if match:
+        st.write("✅ Se encontró bloque de energía activa.")
         for idx, linea in enumerate(match.group(1).splitlines()):
-            m = re.search(r"P(\d)\s+\S+\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)", linea)
+            m = re.search(r"P(\d).*?([\d.,]+)$", linea)
             if m:
                 periodo = f"P{m.group(1)}"
                 consumo = float(m.group(2).replace('.', '').replace(',', '.'))
@@ -56,15 +57,18 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
                     "Consumo (kWh)": consumo,
                     "Tipo Lectura": tipo_lectura.capitalize()
                 })
+    else:
+        st.warning(f"❌ No se encontró bloque de energía activa en {nombre_archivo}")
 
     return pd.DataFrame(datos)
 
 def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    match = re.search(r"ENERGÍA REACTIVA INDUCTIVA kWh([\s\S]+?)EXCESOS DE POTENCIA", texto, re.IGNORECASE)
+    match = re.search(r"ENERGÍA REACTIVA INDUCTIVA.*?kWh([\s\S]+?)EXCESOS DE POTENCIA", texto, re.IGNORECASE)
     datos = []
     if match:
+        st.write("✅ Se encontró bloque de energía reactiva inductiva.")
         for linea in match.group(1).splitlines():
-            m = re.search(r"P(\d)\s+([\d.,]+)\s+[\d.,]+\s+([\d.,]+)", linea)
+            m = re.search(r"P(\d).*?([\d.,]+)\s+([\d.,]+)$", linea)
             if m:
                 datos.append({
                     "Archivo": nombre_archivo,
@@ -74,14 +78,18 @@ def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archiv
                     "Consumo (kVArh)": float(m.group(2).replace('.', '').replace(',', '.')),
                     "A facturar (€)": float(m.group(3).replace('.', '').replace(',', '.'))
                 })
+    else:
+        st.warning(f"❌ No se encontró bloque de energía reactiva en {nombre_archivo}")
+
     return pd.DataFrame(datos)
 
 def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    match = re.search(r"EXCESOS DE POTENCIA kW([\s\S]+?)INFORMACIÓN DE SU PRODUCTO", texto, re.IGNORECASE)
+    match = re.search(r"EXCESOS DE POTENCIA.*?kW([\s\S]+?)INFORMACIÓN DE SU PRODUCTO", texto, re.IGNORECASE)
     datos = []
     if match:
+        st.write("✅ Se encontró bloque de excesos de potencia.")
         for linea in match.group(1).splitlines():
-            m = re.search(r"P(\d)\s+[\d.,]+\s+[\d.,]+\s+([\d.,]+)", linea)
+            m = re.search(r"P(\d).*?([\d.,]+)$", linea)
             if m:
                 datos.append({
                     "Archivo": nombre_archivo,
@@ -90,6 +98,9 @@ def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo
                     "Periodo": f"P{m.group(1)}",
                     "A facturar (kW)": float(m.group(2).replace('.', '').replace(',', '.'))
                 })
+    else:
+        st.warning(f"❌ No se encontró bloque de excesos de potencia en {nombre_archivo}")
+
     return pd.DataFrame(datos)
 
 # ---------------------- EXPORTAR A EXCEL ----------------------
