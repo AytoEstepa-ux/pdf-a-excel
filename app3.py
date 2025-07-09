@@ -101,7 +101,7 @@ def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archiv
     return pd.DataFrame(datos)
 
 
-ddef extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo):
+def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo):
     patron = r"EXCESOS\s+DE\s+POTENCIA\s+kW\s+.*?Periodo horario.*?Contratada.*?Demandada.*?A facturar\s+(.*?)INFORMACIÓN\s+DE\s+SU\s+PRODUCTO"
     match = re.search(patron, texto, re.DOTALL)
     datos = []
