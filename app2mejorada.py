@@ -11,7 +11,6 @@ st.set_page_config(page_title="Factura Endesa a Excel", layout="centered")
 
 st.title("📄 Convertidor PDF → Excel: Factura Endesa")
 
-# Subir múltiples archivos PDF
 uploaded_files = st.file_uploader("Sube tus facturas en PDF", type=["pdf"], accept_multiple_files=True)
 
 # -------------------- FUNCIONES OCR --------------------
@@ -33,11 +32,9 @@ def obtener_texto_pdf(uploaded_file):
         texto = ""
         for page in doc:
             texto += page.get_text()
-    
     if len(texto.strip()) < 100:
         st.info(f"🧐 Detectado PDF escaneado: {uploaded_file.name}. Aplicando OCR...")
         texto = aplicar_ocr_a_pdf(pdf_bytes)
-    
     return texto
 
 # -------------------- FUNCIONES DE EXTRACCIÓN --------------------
@@ -57,7 +54,6 @@ def extraer_datos_generales(texto):
         "Modalidad de Contrato": r"Modalidad de Contrato:\s*(.+)",
         "Fecha Límite de Pago": r"antes del\s*([\d/]+)"
     }
-
     resultados = {}
     for campo, patron in campos.items():
         match = re.search(patron, texto)
@@ -71,7 +67,6 @@ def extraer_tabla_energia_y_potencia(texto, periodo_facturacion):
         r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+" +
         r"([\d.,]+)"
     )
-
     filas = []
     for match in patron.finditer(texto):
         valores = [match.group(i).replace('.', '').replace(',', '.') for i in range(1, 13)]
@@ -91,7 +86,6 @@ def extraer_tabla_energia_y_potencia(texto, periodo_facturacion):
             "Importe Potencia (€)": float(valores[11]),
         }
         filas.append(fila)
-
     return pd.DataFrame(filas)
 
 # -------------------- PROCESAMIENTO PRINCIPAL --------------------
@@ -112,6 +106,13 @@ if uploaded_files:
         resumen_dict = extraer_datos_generales(texto)
         df_resumen = pd.DataFrame([resumen_dict])
         df_resumen['Archivo'] = uploaded_file.name
+
+        # Separar inicio y fin del periodo de facturación
+        df_resumen[["Inicio Facturación", "Fin Facturación"]] = df_resumen["Periodo Facturación"].str.extract(
+            r"(\d{2}/\d{2}/\d{4})\s+al\s+(\d{2}/\d{2}/\d{4})"
+        )
+        df_resumen["Inicio Facturación"] = pd.to_datetime(df_resumen["Inicio Facturación"], dayfirst=True, errors='coerce')
+        df_resumen["Fin Facturación"] = pd.to_datetime(df_resumen["Fin Facturación"], dayfirst=True, errors='coerce')
 
         periodo_facturacion = resumen_dict.get("Periodo Facturación", "Desconocido")
         df_detalle = extraer_tabla_energia_y_potencia(texto, periodo_facturacion)
@@ -151,11 +152,10 @@ if uploaded_files:
             "Importe Reactiva (€)": total_importe_reactiva,
             "Importe Potencia (€)": total_importe_potencia
         }])
-
         startrow = len(df_detalle_total) + 2
         df_totales.to_excel(writer, sheet_name="Energía y Potencia", startrow=startrow, index=False)
 
-        # Aplicar formato negrita
+        # Formato negrita para la fila de totales
         workbook = writer.book
         worksheet = writer.sheets["Energía y Potencia"]
         bold_format = workbook.add_format({'bold': True})
