@@ -95,15 +95,22 @@ def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo
 # ---------------------- EXPORTAR A EXCEL ----------------------
 
 def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
-    # Calcular totales agrupados
-    total_kwh = df_activa.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
-    total_kwh.rename(columns={"Consumo (kWh)": "Total Consumo (kWh)"}, inplace=True)
+    # Inicializar totales vacíos
+    total_kwh = pd.DataFrame(columns=["Archivo", "Total Consumo (kWh)"])
+    total_reactiva = pd.DataFrame(columns=["Archivo", "Total Reactiva (€)"])
+    total_excesos = pd.DataFrame(columns=["Archivo", "Total Excesos (kW)"])
 
-    total_reactiva = df_reactiva.groupby("Archivo")["A facturar (€)"].sum().reset_index()
-    total_reactiva.rename(columns={"A facturar (€)": "Total Reactiva (€)"}, inplace=True)
+    if not df_activa.empty and "Archivo" in df_activa.columns:
+        total_kwh = df_activa.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
+        total_kwh.rename(columns={"Consumo (kWh)": "Total Consumo (kWh)"}, inplace=True)
 
-    total_excesos = df_excesos.groupby("Archivo")["A facturar (kW)"].sum().reset_index()
-    total_excesos.rename(columns={"A facturar (kW)": "Total Excesos (kW)"}, inplace=True)
+    if not df_reactiva.empty and "Archivo" in df_reactiva.columns:
+        total_reactiva = df_reactiva.groupby("Archivo")["A facturar (€)"].sum().reset_index()
+        total_reactiva.rename(columns={"A facturar (€)": "Total Reactiva (€)"}, inplace=True)
+
+    if not df_excesos.empty and "Archivo" in df_excesos.columns:
+        total_excesos = df_excesos.groupby("Archivo")["A facturar (kW)"].sum().reset_index()
+        total_excesos.rename(columns={"A facturar (kW)": "Total Excesos (kW)"}, inplace=True)
 
     # Unir todos los totales por archivo
     df_totales = pd.merge(total_kwh, total_reactiva, on="Archivo", how="outer")
