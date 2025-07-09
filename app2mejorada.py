@@ -158,64 +158,41 @@ if uploaded_files:
     st.write(f"**Total Importe Energía Reactiva (€):** {total_importe_reactiva:,.2f} €")
     st.write(f"**Total Importe Potencia (€):** {total_importe_potencia:,.2f} €")
 
-    # Crear archivo Excel con formato de fecha y numérico adecuado
+    # Crear archivo Excel
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_resumen_total.to_excel(writer, sheet_name="Resumen Facturas", index=False)
         df_detalle_total.to_excel(writer, sheet_name="Energía y Potencia", index=False)
 
-        # Totales como nueva fila
-        df_totales = pd.DataFrame([{
-            "Periodo": "TOTAL",
-            "Consumo kWh": total_consumo_kwh,
-            "Importe Reactiva (€)": total_importe_reactiva,
-            "Importe Potencia (€)": total_importe_potencia
-        }])
-        startrow = len(df_detalle_total) + 2
-        df_totales.to_excel(writer, sheet_name="Energía y Potencia", startrow=startrow, index=False)
-
         workbook = writer.book
-
-        # Formatos
-        bold_format = workbook.add_format({'bold': True})
-        date_format = workbook.add_format({'num_format': 'dd/mm/yyyy'})
-        number_format = workbook.add_format({'num_format': '#,##0.00'})
-
-        # Hojas
-        worksheet_resumen = writer.sheets["Resumen Facturas"]
         worksheet_detalle = writer.sheets["Energía y Potencia"]
 
-        # Negrita para fila total en detalle
-        worksheet_detalle.set_row(startrow, None, bold_format)
+        # Formatos
+        date_format = workbook.add_format({'num_format': 'dd/mm/yyyy'})
+        number_format = workbook.add_format({'num_format': '#,##0.00'})
+        bold_format = workbook.add_format({'bold': True})
 
-        # Obtener índices de columnas de fechas en resumen
-        resumen_cols = df_resumen_total.columns.tolist()
-        inicio_idx_resumen = resumen_cols.index("Inicio Facturación")
-        fin_idx_resumen = resumen_cols.index("Fin Facturación")
-
-        # Aplicar formato fecha solo a las columnas de fecha en resumen
-        worksheet_resumen.set_column(inicio_idx_resumen, inicio_idx_resumen, 15, date_format)
-        worksheet_resumen.set_column(fin_idx_resumen, fin_idx_resumen, 15, date_format)
-
-        # En detalle:
-
-        detalle_cols = df_detalle_total.columns.tolist()
-        inicio_idx_detalle = detalle_cols.index("Inicio Facturación")
-        fin_idx_detalle = detalle_cols.index("Fin Facturación")
-
-        # Aplica formato fecha solo a las columnas de fecha
-        worksheet_detalle.set_column(inicio_idx_detalle, inicio_idx_detalle, 15, date_format)
-        worksheet_detalle.set_column(fin_idx_detalle, fin_idx_detalle, 15, date_format)
-
-        # Aplica formato numérico a las columnas numéricas, excluyendo las fechas y la columna "Periodo" (texto)
-        columnas_numericas = ["Consumo kWh", "Reactiva (kVArh)", "Exceso Reactiva", "Cosφ",
-                             "Importe Reactiva (€)", "Potencia Contratada", "Max. Registrada",
-                             "Kp", "Te", "Excesos Potencia", "Importe Potencia (€)"]
-
-        for col_name in columnas_numericas:
+        # Aplicar formato fecha a columnas Inicio y Fin Facturación
+        for col_name in ["Inicio Facturación", "Fin Facturación"]:
             if col_name in detalle_cols:
-                idx = detalle_cols.index(col_name)
-                worksheet_detalle.set_column(idx, idx, 15, number_format)
+                col_idx = detalle_cols.index(col_name)
+                worksheet_detalle.set_column(col_idx, col_idx, 15, date_format)
+
+        # Aplicar formato numérico a columnas numéricas
+        for col_name in ["Consumo kWh", "Reactiva (kVArh)", "Exceso Reactiva", "Importe Reactiva (€)", "Potencia Contratada",
+                         "Max. Registrada", "Kp", "Te", "Excesos Potencia", "Importe Potencia (€)"]:
+            if col_name in detalle_cols:
+                col_idx = detalle_cols.index(col_name)
+                worksheet_detalle.set_column(col_idx, col_idx, 15, number_format)
+
+        # Escribir fila total desplazada dos columnas a la derecha
+        startrow = len(df_detalle_total) + 2
+        col_offset = 2
+
+        worksheet_detalle.write(startrow, col_offset + 0, "TOTAL", bold_format)  # Periodo
+        worksheet_detalle.write_number(startrow, col_offset + 1, total_consumo_kwh, number_format)  # Consumo kWh
+        worksheet_detalle.write_number(startrow, col_offset + 2, total_importe_reactiva, number_format)  # Importe Reactiva (€)
+        worksheet_detalle.write_number(startrow, col_offset + 3, total_importe_potencia, number_format)  # Importe Potencia (€)
 
     output.seek(0)
 
@@ -225,4 +202,3 @@ if uploaded_files:
         file_name="facturas_endesa_acumuladas.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
