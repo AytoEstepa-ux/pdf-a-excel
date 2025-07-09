@@ -1,4 +1,4 @@
-import streamlit as st 
+import streamlit as st  
 import pandas as pd
 import fitz  # PyMuPDF
 import re
@@ -17,12 +17,10 @@ uploaded_files = st.file_uploader("Sube tus facturas en PDF", type=["pdf"], acce
 # -------------------- FUNCIONES OCR --------------------
 
 def aplicar_ocr_a_pdf(pdf_bytes):
-    """
-    Convierte un PDF escaneado a texto usando OCR (Tesseract).
-    """
     texto_ocr = ""
+    poppler_bin_path = r"C:\Users\Maria\Documents\poppler-24.08.0\Library\bin"  
     try:
-        imagenes = convert_from_bytes(pdf_bytes, poppler_path=r"C:\Users\Maria\Documents\poppler-24.08.0\Library\bin")
+        imagenes = convert_from_bytes(pdf_bytes, poppler_path=poppler_bin_path)
         for img in imagenes:
             texto_ocr += pytesseract.image_to_string(img, lang='spa') + "\n"
     except Exception as e:
@@ -30,16 +28,13 @@ def aplicar_ocr_a_pdf(pdf_bytes):
     return texto_ocr
 
 def obtener_texto_pdf(uploaded_file):
-    """
-    Intenta extraer texto con PyMuPDF. Si falla, aplica OCR.
-    """
     pdf_bytes = uploaded_file.read()
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
         texto = ""
         for page in doc:
             texto += page.get_text()
     
-    if len(texto.strip()) < 100:  # Si hay poco texto, probablemente es escaneado
+    if len(texto.strip()) < 100:
         st.info(f"🧐 Detectado PDF escaneado: {uploaded_file.name}. Aplicando OCR...")
         texto = aplicar_ocr_a_pdf(pdf_bytes)
     
@@ -67,14 +62,13 @@ def extraer_datos_generales(texto):
     for campo, patron in campos.items():
         match = re.search(patron, texto)
         resultados[campo] = match.group(1).strip() if match else ""
-
     return resultados
 
 def extraer_tabla_energia_y_potencia(texto, periodo_facturacion):
     patron = re.compile(
-        r"Periodo\s+([1-6])(?:\s+Capacitiva)?\s+"
-        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
-        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+"
+        r"Periodo\s+([1-6])(?:\s+Capacitiva)?\s+" +
+        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+" +
+        r"([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+" +
         r"([\d.,]+)"
     )
 
@@ -126,18 +120,47 @@ if uploaded_files:
         df_resumen_total = pd.concat([df_resumen_total, df_resumen], ignore_index=True)
         df_detalle_total = pd.concat([df_detalle_total, df_detalle], ignore_index=True)
 
-    # Mostrar los resultados acumulados
+    # Calcular totales
+    total_consumo_kwh = df_detalle_total["Consumo kWh"].sum()
+    total_importe_reactiva = df_detalle_total["Importe Reactiva (€)"].sum()
+    total_importe_potencia = df_detalle_total["Importe Potencia (€)"].sum()
+
+    # Mostrar resultados
     st.subheader("📋 Resumen de las Facturas")
     st.dataframe(df_resumen_total)
 
     st.subheader("📊 Energía y Potencia por Periodo")
     st.dataframe(df_detalle_total)
 
-    # Generar Excel
+    # Mostrar totales
+    st.markdown("### 🔢 Totales")
+    st.write(f"**Total Consumo (kWh):** {total_consumo_kwh:,.2f} kWh")
+    st.write(f"**Total Importe Energía Reactiva (€):** {total_importe_reactiva:,.2f} €")
+    st.write(f"**Total Importe Potencia (€):** {total_importe_potencia:,.2f} €")
+
+    # Crear archivo Excel
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_resumen_total.to_excel(writer, sheet_name="Resumen Facturas", index=False)
         df_detalle_total.to_excel(writer, sheet_name="Energía y Potencia", index=False)
+
+        # Totales como nueva fila
+        df_totales = pd.DataFrame([{
+            "Periodo": "TOTAL",
+            "Consumo kWh": total_consumo_kwh,
+            "Importe Reactiva (€)": total_importe_reactiva,
+            "Importe Potencia (€)": total_importe_potencia
+        }])
+
+        startrow = len(df_detalle_total) + 2
+        df_totales.to_excel(writer, sheet_name="Energía y Potencia", startrow=startrow, index=False)
+
+        # Aplicar formato negrita
+        workbook = writer.book
+        worksheet = writer.sheets["Energía y Potencia"]
+        bold_format = workbook.add_format({'bold': True})
+        worksheet.set_row(startrow, None, bold_format)
+
     output.seek(0)
 
     st.download_button(
