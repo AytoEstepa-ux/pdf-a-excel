@@ -1,13 +1,19 @@
-import streamlit as st
+from pdf2image import convert_from_bytes
 
-st.title("Carga de múltiples PDFs")
+# Cambia esta ruta por donde tengas el PDF para probar
+archivo_pdf = r"C:\Users\Maria\Documents\factura-analyzer\F25100479 diez dias enero primera sustituida.pdf"
 
-# Cargar múltiples archivos PDF
-uploaded_files = st.file_uploader("Sube tus archivos PDF", type=["pdf"], accept_multiple_files=True)
+# Ruta donde descomprimiste Poppler (la carpeta 'bin')
+poppler_bin_path = r"C:\Users\Maria\Documents\poppler-24.08.0\Library\bin"
 
-if uploaded_files is not None:
-    st.write(f"Has subido {len(uploaded_files)} archivos PDF:")
-    for uploaded_file in uploaded_files:
-        st.write(uploaded_file.name)
-else:
-    st.write("No se ha subido ningún archivo.")
+try:
+    with open(archivo_pdf, "rb") as f:
+        pdf_bytes = f.read()
+
+    # Aquí pasamos poppler_path sin modificar el PATH de Windows
+    imagenes = convert_from_bytes(pdf_bytes, poppler_path=poppler_bin_path)
+
+    print(f"Se generaron {len(imagenes)} imágenes del PDF")
+
+except Exception as e:
+    print(f"Error: {e}")
