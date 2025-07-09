@@ -128,9 +128,10 @@ def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo
 
 # ---------------------- EXPORTAR A EXCEL ----------------------
 def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
+    # Totales por archivo
     total_kwh = pd.DataFrame(columns=["Archivo", "Total Consumo (kWh)"])
-    total_reactiva = pd.DataFrame(columns=["Archivo", "Total Reactiva (€)"])
-    total_excesos = pd.DataFrame(columns=["Archivo", "Total Excesos (kW)"])
+    total_reactiva = pd.DataFrame(columns=["Archivo", "Total Reactiva Inductiva (€)"])
+    total_excesos = pd.DataFrame(columns=["Archivo", "Total Excesos Potencia (€)"])
 
     if not df_activa.empty and "Archivo" in df_activa.columns:
         total_kwh = df_activa.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
@@ -138,24 +139,27 @@ def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
 
     if not df_reactiva.empty and "Archivo" in df_reactiva.columns:
         total_reactiva = df_reactiva.groupby("Archivo")["A facturar (€)"].sum().reset_index()
-        total_reactiva.rename(columns={"A facturar (€)": "Total Reactiva (€)"}, inplace=True)
+        total_reactiva.rename(columns={"A facturar (€)": "Total Reactiva Inductiva (€)"}, inplace=True)
 
     if not df_excesos.empty and "Archivo" in df_excesos.columns:
         total_excesos = df_excesos.groupby("Archivo")["A facturar (kW)"].sum().reset_index()
-        total_excesos.rename(columns={"A facturar (kW)": "Total Excesos (kW)"}, inplace=True)
+        total_excesos.rename(columns={"A facturar (kW)": "Total Excesos Potencia (€)"}, inplace=True)
 
+    # Unir totales
     df_totales = pd.merge(total_kwh, total_reactiva, on="Archivo", how="outer")
     df_totales = pd.merge(df_totales, total_excesos, on="Archivo", how="outer")
     df_totales = df_totales.fillna(0)
 
+    # Crear Excel
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df_resumenes.to_excel(writer, sheet_name="Resumen Factura", index=False)
         df_activa.to_excel(writer, sheet_name="Energía Activa", index=False)
-        df_reactiva.to_excel(writer, sheet_name="Energía Reactiva", index=False)
+        df_reactiva.to_excel(writer, sheet_name="Energía Reactiva Inductiva", index=False)
         df_excesos.to_excel(writer, sheet_name="Excesos Potencia", index=False)
         df_totales.to_excel(writer, sheet_name="Totales por Archivo", index=False)
     return output.getvalue()
+
 
 # ---------------------- STREAMLIT APP ----------------------
 st.set_page_config(page_title="Facturas Eléctricas", layout="wide")
@@ -193,6 +197,16 @@ if archivos:
     df_reactivas = pd.concat(reactivas, ignore_index=True)
     df_excesos = pd.concat(excesos, ignore_index=True)
 
+        # Calculamos y mostramos los totales en pantalla
+    total_kwh = df_activas.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
+    total_reactiva = df_reactivas.groupby("Archivo")["A facturar (€)"].sum().reset_index()
+    total_excesos = df_excesos.groupby("Archivo")["A facturar (kW)"].sum().reset_index()
+
+    df_totales = pd.merge(total_kwh, total_reactiva, on="Archivo", how="outer")
+    df_totales = pd.merge(df_totales, total_excesos, on="Archivo", how="outer")
+    df_totales.columns = ["Archivo", "Total Consumo (kWh)", "Total Reactiva Inductiva (€)", "Total Excesos Potencia (€)"]
+    df_totales = df_totales.fillna(0)
+
     st.success("✅ Archivos procesados correctamente.")
 
     st.subheader("📊 Resumen general")
@@ -206,6 +220,10 @@ if archivos:
 
     st.subheader("📈 Excesos potencia")
     st.dataframe(df_excesos)
+
+    st.subheader("📌 Totales por archivo")
+    st.dataframe(df_totales)
+
 
     excel_bytes = generar_excel_acumulado(df_resumenes, df_activas, df_reactivas, df_excesos)
 
