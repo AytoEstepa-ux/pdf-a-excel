@@ -8,7 +8,6 @@ import pytesseract
 from PIL import Image
 
 st.set_page_config(page_title="Factura Endesa a Excel", layout="centered")
-
 st.title("📄 Convertidor PDF → Excel: Factura Endesa")
 
 uploaded_files = st.file_uploader("Sube tus facturas en PDF", type=["pdf"], accept_multiple_files=True)
@@ -17,7 +16,7 @@ uploaded_files = st.file_uploader("Sube tus facturas en PDF", type=["pdf"], acce
 
 def aplicar_ocr_a_pdf(pdf_bytes):
     texto_ocr = ""
-    poppler_bin_path = r"C:\Users\Maria\Documents\poppler-24.08.0\Library\bin"  
+    poppler_bin_path = r"C:\Users\Maria\Documents\poppler-24.08.0\Library\bin"
     try:
         imagenes = convert_from_bytes(pdf_bytes, poppler_path=poppler_bin_path)
         for img in imagenes:
@@ -71,7 +70,6 @@ def extraer_tabla_energia_y_potencia(texto, periodo_facturacion):
     for match in patron.finditer(texto):
         valores = [match.group(i).replace('.', '').replace(',', '.') for i in range(1, 13)]
         fila = {
-            "Periodo Facturación": periodo_facturacion,
             "Periodo": f"P{valores[0]}",
             "Consumo kWh": float(valores[1]),
             "Reactiva (kVArh)": float(valores[2]),
@@ -107,19 +105,31 @@ if uploaded_files:
         df_resumen = pd.DataFrame([resumen_dict])
         df_resumen['Archivo'] = uploaded_file.name
 
-        # Separar inicio y fin del periodo de facturación
+        # Extraer fechas desde "Periodo Facturación"
         df_resumen[["Inicio Facturación", "Fin Facturación"]] = df_resumen["Periodo Facturación"].str.extract(
             r"(\d{2}/\d{2}/\d{4})\s+al\s+(\d{2}/\d{2}/\d{4})"
         )
         df_resumen["Inicio Facturación"] = pd.to_datetime(df_resumen["Inicio Facturación"], dayfirst=True, errors='coerce')
         df_resumen["Fin Facturación"] = pd.to_datetime(df_resumen["Fin Facturación"], dayfirst=True, errors='coerce')
 
-        periodo_facturacion = resumen_dict.get("Periodo Facturación", "Desconocido")
+        # Eliminar columna original
+        df_resumen.drop(columns=["Periodo Facturación"], inplace=True)
+
+        periodo_facturacion = resumen_dict.get("Periodo Facturación", "")
+
         df_detalle = extraer_tabla_energia_y_potencia(texto, periodo_facturacion)
         df_detalle['Archivo'] = uploaded_file.name
 
-        df_resumen_total = pd.concat([df_resumen_total, df_resumen], ignore_index=True)
+        # Extraer y agregar fechas a detalle
+        match = re.search(r"(\d{2}/\d{2}/\d{4})\s+al\s+(\d{2}/\d{2}/\d{4})", periodo_facturacion)
+        if match:
+            inicio = pd.to_datetime(match.group(1), dayfirst=True, errors='coerce')
+            fin = pd.to_datetime(match.group(2), dayfirst=True, errors='coerce')
+            df_detalle["Inicio Facturación"] = inicio
+            df_detalle["Fin Facturación"] = fin
+
         df_detalle_total = pd.concat([df_detalle_total, df_detalle], ignore_index=True)
+        df_resumen_total = pd.concat([df_resumen_total, df_resumen], ignore_index=True)
 
     # Calcular totales
     total_consumo_kwh = df_detalle_total["Consumo kWh"].sum()
@@ -155,7 +165,7 @@ if uploaded_files:
         startrow = len(df_detalle_total) + 2
         df_totales.to_excel(writer, sheet_name="Energía y Potencia", startrow=startrow, index=False)
 
-        # Formato negrita para la fila de totales
+        # Formato negrita
         workbook = writer.book
         worksheet = writer.sheets["Energía y Potencia"]
         bold_format = workbook.add_format({'bold': True})
