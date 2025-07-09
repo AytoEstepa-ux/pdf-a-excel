@@ -41,17 +41,20 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
 
     if match:
         st.write("✅ Se encontró bloque de energía activa.")
-        lineas = match.group(1).strip().split("P")[1:]
-        for linea in lineas:
+        lineas = match.group(1).strip().split("P")[1:]  # Omitimos lo que hay antes de P1
+        for i, linea in enumerate(lineas):
             partes = linea.strip().split()
             if len(partes) >= 6:
-                periodo = f"P{partes[0].split('.')[1]}"
-                consumo = float(partes[5].replace('.', '').replace(',', '.'))
+                consumo = partes[-1].replace('.', '').replace(',', '.')
+                try:
+                    consumo = float(consumo)
+                except ValueError:
+                    consumo = 0.0
                 datos.append({
                     "Archivo": nombre_archivo,
                     "Periodo desde": periodo_desde,
                     "Periodo hasta": periodo_hasta,
-                    "Periodo": periodo,
+                    "Periodo": f"P{i+1}",
                     "Consumo (kWh)": consumo,
                     "Tipo Lectura": "Estimada"
                 })
@@ -59,6 +62,7 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
         st.warning(f"❌ No se encontró bloque de energía activa en {nombre_archivo}")
 
     return pd.DataFrame(datos)
+
 
 def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archivo):
     patron = r"ENERGÍA\s+REACTIVA\s+INDUCTIVA\s+kWh\s+Periodo horario(.*?)EXCESOS\s+DE\s+POTENCIA"
