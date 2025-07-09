@@ -116,11 +116,10 @@ if uploaded_files:
         df_resumen.drop(columns=["Periodo Facturación"], inplace=True)
 
         periodo_facturacion = resumen_dict.get("Periodo Facturación", "")
-
         df_detalle = extraer_tabla_energia_y_potencia(texto, periodo_facturacion)
         df_detalle['Archivo'] = uploaded_file.name
 
-        # Extraer y agregar fechas a detalle
+        # Extraer fechas también al detalle
         match = re.search(r"(\d{2}/\d{2}/\d{4})\s+al\s+(\d{2}/\d{2}/\d{4})", periodo_facturacion)
         if match:
             inicio = pd.to_datetime(match.group(1), dayfirst=True, errors='coerce')
@@ -128,8 +127,19 @@ if uploaded_files:
             df_detalle["Inicio Facturación"] = inicio
             df_detalle["Fin Facturación"] = fin
 
-        df_detalle_total = pd.concat([df_detalle_total, df_detalle], ignore_index=True)
         df_resumen_total = pd.concat([df_resumen_total, df_resumen], ignore_index=True)
+        df_detalle_total = pd.concat([df_detalle_total, df_detalle], ignore_index=True)
+
+    # Reordenar columnas para que Inicio y Fin estén primero
+    resumen_cols = ["Inicio Facturación", "Fin Facturación"] + [col for col in df_resumen_total.columns if col not in ["Inicio Facturación", "Fin Facturación"]]
+    df_resumen_total = df_resumen_total[resumen_cols]
+
+    detalle_cols = ["Inicio Facturación", "Fin Facturación"] + [col for col in df_detalle_total.columns if col not in ["Inicio Facturación", "Fin Facturación"]]
+    df_detalle_total = df_detalle_total[detalle_cols]
+
+    # Ordenar por Inicio de Facturación
+    df_resumen_total.sort_values("Inicio Facturación", inplace=True)
+    df_detalle_total.sort_values("Inicio Facturación", inplace=True)
 
     # Calcular totales
     total_consumo_kwh = df_detalle_total["Consumo kWh"].sum()
@@ -143,13 +153,12 @@ if uploaded_files:
     st.subheader("📊 Energía y Potencia por Periodo")
     st.dataframe(df_detalle_total)
 
-    # Mostrar totales
     st.markdown("### 🔢 Totales")
     st.write(f"**Total Consumo (kWh):** {total_consumo_kwh:,.2f} kWh")
     st.write(f"**Total Importe Energía Reactiva (€):** {total_importe_reactiva:,.2f} €")
     st.write(f"**Total Importe Potencia (€):** {total_importe_potencia:,.2f} €")
 
-    # Crear archivo Excel
+    # Crear archivo Excel con formato de fecha
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_resumen_total.to_excel(writer, sheet_name="Resumen Facturas", index=False)
@@ -165,11 +174,24 @@ if uploaded_files:
         startrow = len(df_detalle_total) + 2
         df_totales.to_excel(writer, sheet_name="Energía y Potencia", startrow=startrow, index=False)
 
-        # Formato negrita
         workbook = writer.book
-        worksheet = writer.sheets["Energía y Potencia"]
+
+        # Formato negrita para la fila total
+        worksheet_detalle = writer.sheets["Energía y Potencia"]
         bold_format = workbook.add_format({'bold': True})
-        worksheet.set_row(startrow, None, bold_format)
+        worksheet_detalle.set_row(startrow, None, bold_format)
+
+        # Crear formato de fecha dd/mm/yyyy
+        date_format = workbook.add_format({'num_format': 'dd/mm/yyyy'})
+
+        # Aplicar formato de fecha en 'Resumen Facturas'
+        worksheet_resumen = writer.sheets["Resumen Facturas"]
+        worksheet_resumen.set_column(0, 0, 15, date_format)  # "Inicio Facturación"
+        worksheet_resumen.set_column(1, 1, 15, date_format)  # "Fin Facturación"
+
+        # Aplicar formato de fecha en 'Energía y Potencia'
+        worksheet_detalle.set_column(0, 0, 15, date_format)  # "Inicio Facturación"
+        worksheet_detalle.set_column(1, 1, 15, date_format)  # "Fin Facturación"
 
     output.seek(0)
 
