@@ -22,7 +22,7 @@ def aplicar_ocr_a_pdf(pdf_bytes):
     """
     texto_ocr = ""
     try:
-        imagenes = convert_from_bytes(pdf_bytes)
+        imagenes = convert_from_bytes(pdf_bytes, poppler_path=r"C:\Users\Maria\Documents\poppler-24.08.0\Library\bin")
         for img in imagenes:
             texto_ocr += pytesseract.image_to_string(img, lang='spa') + "\n"
     except Exception as e:
