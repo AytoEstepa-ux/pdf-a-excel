@@ -102,45 +102,39 @@ def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archiv
 
 
 def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    patron = r"EXCESOS\s+DE\s+POTENCIA\s+kW\s+Periodo horario.*?Contratada.*?Demandada.*?A facturar(.*?)INFORMACIÓN\s+DE\s+SU\s+PRODUCTO"
+    patron = r"EXCESOS\s+DE\s+POTENCIA.*?Periodo\s+horario.*?Contratada.*?Demandada.*?A\s+facturar(.*?)INFORMACIÓN\s+DE\s+SU\s+PRODUCTO"
     match = re.search(patron, texto, re.DOTALL)
     datos = []
 
     if match:
         st.write("✅ Se encontró bloque de excesos de potencia.")
-        lineas = match.group(1).strip().split("P")[1:]  # Omite cabecera
+        bloque = match.group(1).strip()
+        lineas = bloque.split("P")[1:]  # omitir cabecera
         for linea in lineas:
             partes = linea.strip().split()
-            if len(partes) >= 5:
-                periodo = f"P{partes[0]}"
+            if len(partes) >= 4:
                 try:
+                    periodo = f"P{partes[0]}"
                     contratada = float(partes[1].replace('.', '').replace(',', '.'))
-                except ValueError:
-                    contratada = 0.0
-                    
-                try:
                     demandada = float(partes[2].replace('.', '').replace(',', '.'))
+                    a_facturar = float(partes[3].replace('.', '').replace(',', '.'))
                 except ValueError:
-                    demandada = 0.0
-                    
-                try:
-                    a_facturar = float(partes[4].replace('.', '').replace(',', '.'))
-                except ValueError:
-                    a_facturar = 0.0
+                    contratada = demandada = a_facturar = 0.0
 
                 datos.append({
                     "Archivo": nombre_archivo,
                     "Periodo desde": periodo_desde,
                     "Periodo hasta": periodo_hasta,
                     "Periodo": periodo,
-                    "Contratada (kW)": contratada,
-                    "Demandada (kW)": demandada,
-                    "A facturar": a_facturar  # Cambié "A facturar (kW)" por "A facturar"
+                    "Contratada": contratada,
+                    "Demandada": demandada,
+                    "A facturar": a_facturar
                 })
     else:
         st.warning(f"❌ No se encontró bloque de excesos de potencia en {nombre_archivo}")
 
     return pd.DataFrame(datos)
+
 
 # ---------------------- EXPORTAR A EXCEL ----------------------
 def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
@@ -158,8 +152,8 @@ def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
         total_reactiva.rename(columns={"A facturar (€)": "Total Reactiva Inductiva (€)"}, inplace=True)
 
     if not df_excesos.empty and "Archivo" in df_excesos.columns:
-        total_excesos = df_excesos.groupby("Archivo")["A facturar"].sum().reset_index()
-        total_excesos.rename(columns={"A facturar": "Total Excesos Potencia (€)"}, inplace=True)
+        total_excesos = df_excesos.groupby("Archivo")["A facturar (kW)"].sum().reset_index()
+        total_excesos.rename(columns={"A facturar (kW)": "Total Excesos Potencia (€)"}, inplace=True)
 
     # Unir totales
     df_totales = pd.merge(total_kwh, total_reactiva, on="Archivo", how="outer")
@@ -175,6 +169,7 @@ def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
         df_excesos.to_excel(writer, sheet_name="Excesos Potencia", index=False)
         df_totales.to_excel(writer, sheet_name="Totales por Archivo", index=False)
     return output.getvalue()
+
 
 # ---------------------- STREAMLIT APP ----------------------
 st.set_page_config(page_title="Facturas Eléctricas", layout="wide")
@@ -207,19 +202,46 @@ if archivos:
         df_exceso = extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo)
         excesos.append(df_exceso)
 
-    # Concatenar todo en un único DataFrame
     df_resumenes = pd.concat(resumenes, ignore_index=True)
-    df_activa = pd.concat(activas, ignore_index=True)
-    df_reactiva = pd.concat(reactivas, ignore_index=True)
+    df_activas = pd.concat(activas, ignore_index=True)
+    df_reactivas = pd.concat(reactivas, ignore_index=True)
     df_excesos = pd.concat(excesos, ignore_index=True)
 
-    # Generar Excel
-    archivo_excel = generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos)
+        # Calculamos y mostramos los totales en pantalla
+    total_kwh = df_activas.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
+    total_reactiva = df_reactivas.groupby("Archivo")["A facturar (€)"].sum().reset_index()
+    total_excesos = df_excesos.groupby("Archivo")["A facturar (kW)"].sum().reset_index()
 
-    # Descargar enlace
+    df_totales = pd.merge(total_kwh, total_reactiva, on="Archivo", how="outer")
+    df_totales = pd.merge(df_totales, total_excesos, on="Archivo", how="outer")
+    df_totales.columns = ["Archivo", "Total Consumo (kWh)", "Total Reactiva Inductiva (€)", "Total Excesos Potencia (€)"]
+    df_totales = df_totales.fillna(0)
+
+    st.success("✅ Archivos procesados correctamente.")
+
+    st.subheader("📊 Resumen general")
+    st.dataframe(df_resumenes)
+
+    st.subheader("⚡ Energía activa")
+    st.dataframe(df_activas)
+
+    st.subheader("🔁 Energía reactiva")
+    st.dataframe(df_reactivas)
+
+    st.subheader("📈 Excesos potencia")
+    st.dataframe(df_excesos)
+
+    st.subheader("📌 Totales por archivo")
+    st.dataframe(df_totales)
+
+
+    excel_bytes = generar_excel_acumulado(df_resumenes, df_activas, df_reactivas, df_excesos)
+
     st.download_button(
-        label="Descargar resultados en Excel",
-        data=archivo_excel,
-        file_name="facturas_electricas.xlsx",
+        label="📅 Descargar Excel acumulado",
+        data=excel_bytes,
+        file_name="facturas_acumuladas.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+
