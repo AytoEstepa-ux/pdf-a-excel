@@ -64,7 +64,7 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
     return pd.DataFrame(datos)
 
 def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    patron = r"ENERGÍA\s+REACTIVA\s+INDUCTIVA\s+kWh\s*Periodo horario\s*(P[1-6].*?)EXCESOS"
+    patron = r"ENERGÍA\s+REACTIVA\s+INDUCTIVA\s+kWh.*?(P1\s+.*?P6\s+.*?)(?:EXCESOS|EXCESOS\\s+DE\\s+POTENCIA)"
     match = re.search(patron, texto, re.DOTALL)
     datos = []
 
