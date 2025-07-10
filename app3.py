@@ -152,6 +152,16 @@ def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo
 
 # ---------------------- EXPORTAR A EXCEL ----------------------
 def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
+    # Convertir fechas a datetime para ordenar
+    for df in [df_resumenes, df_activa, df_reactiva, df_excesos]:
+        if "Periodo desde" in df.columns:
+            df["Periodo desde"] = pd.to_datetime(df["Periodo desde"], format="%d/%m/%Y", errors='coerce')
+
+    df_resumenes.sort_values("Periodo desde", inplace=True)
+    df_activa.sort_values("Periodo desde", inplace=True)
+    df_reactiva.sort_values("Periodo desde", inplace=True)
+    df_excesos.sort_values("Periodo desde", inplace=True)
+
     total_kwh = df_activa.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
     total_kwh.rename(columns={"Consumo (kWh)": "Total Consumo (kWh)"}, inplace=True)
 
