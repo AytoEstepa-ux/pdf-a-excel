@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as st 
 import fitz  # PyMuPDF
 import pandas as pd
 import re
@@ -41,7 +41,7 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
 
     if match:
         st.write(f"✅ Energía activa encontrada en {nombre_archivo}")
-        lineas = match.group(1).strip().split("P")[1:]  # quitar la primera línea vacía
+        lineas = match.group(1).strip().split("P")[1:]
         for i, linea in enumerate(lineas):
             partes = linea.strip().split()
             if len(partes) >= 7:
@@ -62,7 +62,6 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
         st.warning(f"❌ No se encontró Energía Activa en {nombre_archivo}")
 
     return pd.DataFrame(datos)
-
 
 def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archivo):
     patron = r"ENERGÍA\s+REACTIVA\s+INDUCTIVA\s+kWh\s*Periodo horario\s*(P[1-6].*?)EXCESOS"
@@ -99,7 +98,7 @@ def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archiv
                     "A facturar Reactiva (€)": a_facturar
                 })
     else:
-        st.warning(f"❌ No se encontró Energía Reactiva Inductiva en {nombre_archivo}")
+        st.info(f"ℹ️ Energía reactiva inductiva ausente o con valores nulos en {nombre_archivo}")
 
     return pd.DataFrame(datos)
 
@@ -141,10 +140,16 @@ def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
     total_kwh = df_activa.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
     total_kwh.rename(columns={"Consumo (kWh)": "Total Consumo (kWh)"}, inplace=True)
 
-    total_reactiva = df_reactiva.groupby("Archivo")["A facturar Reactiva (€)"].sum().reset_index()
+    if not df_reactiva.empty and "A facturar Reactiva (€)" in df_reactiva.columns:
+        total_reactiva = df_reactiva.groupby("Archivo")["A facturar Reactiva (€)"].sum().reset_index()
+    else:
+        total_reactiva = pd.DataFrame(columns=["Archivo", "Total Reactiva Inductiva (€)"])
     total_reactiva.rename(columns={"A facturar Reactiva (€)": "Total Reactiva Inductiva (€)"}, inplace=True)
 
-    total_excesos = df_excesos.groupby("Archivo")["A facturar Exceso (€)"].sum().reset_index()
+    if not df_excesos.empty and "A facturar Exceso (€)" in df_excesos.columns:
+        total_excesos = df_excesos.groupby("Archivo")["A facturar Exceso (€)"].sum().reset_index()
+    else:
+        total_excesos = pd.DataFrame(columns=["Archivo", "Total Excesos Potencia (€)"])
     total_excesos.rename(columns={"A facturar Exceso (€)": "Total Excesos Potencia (€)"}, inplace=True)
 
     df_totales = pd.merge(total_kwh, total_reactiva, on="Archivo", how="outer")
@@ -159,7 +164,6 @@ def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
         df_excesos.to_excel(writer, sheet_name="Excesos Potencia", index=False)
         df_totales.to_excel(writer, sheet_name="Totales por Archivo", index=False)
     return output.getvalue()
-
 
 # ---------------------- STREAMLIT APP ----------------------
 st.set_page_config(page_title="Facturas Eléctricas", layout="wide")
@@ -194,14 +198,8 @@ if archivos:
     df_reactivas = pd.concat(reactivas, ignore_index=True)
     df_excesos = pd.concat(excesos, ignore_index=True)
 
-    total_kwh = df_activas.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
-    total_reactiva = df_reactivas.groupby("Archivo")["A facturar (€)"].sum().reset_index()
-    total_excesos = df_excesos.groupby("Archivo")["A facturar (€)"].sum().reset_index()
-
-    df_totales = pd.merge(total_kwh, total_reactiva, on="Archivo", how="outer")
-    df_totales = pd.merge(df_totales, total_excesos, on="Archivo", how="outer")
-    df_totales.columns = ["Archivo", "Total Consumo (kWh)", "Total Reactiva Inductiva (€)", "Total Excesos Potencia (€)"]
-    df_totales = df_totales.fillna(0)
+    df_totales = pd.DataFrame()
+    excel_bytes = generar_excel_acumulado(df_resumenes, df_activas, df_reactivas, df_excesos)
 
     st.success("✅ Archivos procesados correctamente.")
 
@@ -218,9 +216,7 @@ if archivos:
     st.dataframe(df_excesos)
 
     st.subheader("📌 Totales por archivo")
-    st.dataframe(df_totales)
-
-    excel_bytes = generar_excel_acumulado(df_resumenes, df_activas, df_reactivas, df_excesos)
+    st.dataframe(pd.read_excel(io.BytesIO(excel_bytes), sheet_name="Totales por Archivo"))
 
     st.download_button(
         label="📅 Descargar Excel acumulado",
@@ -228,5 +224,3 @@ if archivos:
         file_name="facturas_acumuladas.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-
