@@ -162,6 +162,11 @@ def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
     df_reactiva.sort_values("Periodo desde", inplace=True)
     df_excesos.sort_values("Periodo desde", inplace=True)
 
+    # Volver a mostrar las fechas en formato dd/mm/yyyy
+    for df in [df_resumenes, df_activa, df_reactiva, df_excesos]:
+        if "Periodo desde" in df.columns:
+            df["Periodo desde"] = df["Periodo desde"].dt.strftime("%d/%m/%Y")
+
     total_kwh = df_activa.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
     total_kwh.rename(columns={"Consumo (kWh)": "Total Consumo (kWh)"}, inplace=True)
 
@@ -189,6 +194,7 @@ def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
         df_excesos.to_excel(writer, sheet_name="Excesos Potencia", index=False)
         df_totales.to_excel(writer, sheet_name="Totales por Archivo", index=False)
     return output.getvalue()
+
 
 # ---------------------- STREAMLIT APP ----------------------
 st.set_page_config(page_title="Facturas Eléctricas", layout="wide")
