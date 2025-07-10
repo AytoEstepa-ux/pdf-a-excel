@@ -64,17 +64,29 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
     return pd.DataFrame(datos)
 
 def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    patron = r"ENERGÍA\s+REACTIVA\s+INDUCTIVA\s+kWh.*?(P1\s+.*?P6\s+.*?)(?:EXCESOS|EXCESOS\\s+DE\\s+POTENCIA)"
-    match = re.search(patron, texto, re.DOTALL)
     datos = []
+    try:
+        # Cortamos desde el título hasta el siguiente bloque
+        inicio = texto.find("ENERGÍA REACTIVA INDUCTIVA kWh")
+        if inicio == -1:
+            st.warning(f"❌ Energía reactiva inductiva no encontrada en {nombre_archivo}")
+            return pd.DataFrame()
 
-    if match:
-        st.write(f"✅ Energía reactiva inductiva encontrada en {nombre_archivo}")
-        lineas = match.group(1).strip().split("P")[1:]
-        for i, linea in enumerate(lineas):
+        bloque = texto[inicio:]
+        fin = bloque.find("EXCESOS DE POTENCIA")
+        if fin != -1:
+            bloque = bloque[:fin]
+
+        lineas = re.findall(r"P[1-6]\s+\d+\s+[\d,\.]+\s+\d+", bloque)
+
+        if not lineas:
+            st.info(f"ℹ️ Energía reactiva inductiva sin valores claros en {nombre_archivo}")
+            return pd.DataFrame()
+
+        for linea in lineas:
             partes = linea.strip().split()
-            if len(partes) >= 4:
-                periodo = f"P{i+1}"
+            if len(partes) == 4:
+                periodo = partes[0]
                 try:
                     consumo = float(partes[1].replace('.', '').replace(',', '.'))
                 except ValueError:
@@ -97,10 +109,13 @@ def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archiv
                     "Cos φ": cos_phi,
                     "A facturar Reactiva (€)": a_facturar
                 })
-    else:
-        st.info(f"ℹ️ Energía reactiva inductiva ausente o con valores nulos en {nombre_archivo}")
 
-    return pd.DataFrame(datos)
+        st.success(f"✅ Energía reactiva inductiva extraída correctamente de {nombre_archivo}")
+        return pd.DataFrame(datos)
+
+    except Exception as e:
+        st.error(f"Error al procesar Energía Reactiva Inductiva en {nombre_archivo}: {e}")
+        return pd.DataFrame()
 
 def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo):
     patron = r"EXCESOS\s+DE\s+POTENCIA\s+kW\s*Periodo horario.*?A facturar\s*(P[1-6].*?)INFORMACIÓN"
