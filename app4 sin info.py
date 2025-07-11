@@ -18,7 +18,7 @@ def leer_texto_pdf(file):
 # ---------------------- EXTRACCIÓN DE DATOS ----------------------
 def extraer_resumen_factura(texto):
     """Extrae los campos resumen según el nuevo formato de factura."""
-    campos = {                                                     # <<< MODIFICADO >>>
+    campos = {
         "Nº Factura"        : r"Factura Nº\s*([\w\-]+)",
         "Fecha emisión"     : r"Emisión\s*(\d{2}-\d{2}-\d{4})",
         "Periodo desde"     : r"Periodo\s*(\d{2}-\d{2}-\d{4})\s*>",
@@ -37,17 +37,14 @@ def extraer_resumen_factura(texto):
 
 # ---------------------- BLOQUES VARIABLES ----------------------
 def _recortar_hasta_siguiente_cabecera(bloque: str) -> str:
-    """
-    Devuelve el texto desde el inicio del bloque hasta la primera línea
-    mayoritariamente en mayúsculas (otra cabecera) o el final si no la hay.
-    """
+    """Corta el bloque en la primera línea de cabecera (mayúsculas largas)."""
     match = re.search(r"\n[A-ZÁÉÍÓÚÑ ]{10,}", bloque)
     return bloque[:match.start()] if match else bloque
 
 
 # ---------------------- ENERGÍA ACTIVA ----------------------
 def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    patron_seccion = r"CONSUMO\s+–\s+ACTIVA.*?(P[1-6].*?)CONSUMO\s+–\s+REACTIVA"  # <<< MODIFICADO >>>
+    patron_seccion = r"CONSUMO\s+–\s+ACTIVA.*?(P[1-6].*?)CONSUMO\s+–\s+REACTIVA"
     match = re.search(patron_seccion, texto, re.DOTALL)
     datos = []
 
@@ -56,7 +53,7 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
         lineas = match.group(1).strip().split("P")[1:]
         for i, linea in enumerate(lineas):
             partes = linea.strip().split()
-            if len(partes) >= 2:                     # basta con periodo y valor
+            if len(partes) >= 2:
                 periodo = f"P{i+1}"
                 try:
                     consumo = float(partes[-1].replace('.', '').replace(',', '.'))
@@ -73,6 +70,12 @@ def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
     else:
         st.warning(f"❌ No se encontró Energía Activa en {nombre_archivo}")
 
+    # ---------- BLINDAJE: devuelve siempre las columnas ----------
+    if not datos:
+        return pd.DataFrame(columns=[
+            "Archivo", "Periodo desde", "Periodo hasta",
+            "Periodo", "Consumo (kWh)", "Tipo Lectura"
+        ])
     return pd.DataFrame(datos)
 
 
@@ -83,14 +86,20 @@ def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archiv
         inicio = texto.find("ENERGÍA REACTIVA INDUCTIVA kWh")
         if inicio == -1:
             st.warning(f"❌ Energía reactiva inductiva no encontrada en {nombre_archivo}")
-            return pd.DataFrame()
+            return pd.DataFrame(columns=[
+                "Archivo", "Periodo desde", "Periodo hasta", "Periodo",
+                "Consumo Reactiva (kWh)", "Cos φ", "A facturar Reactiva (€)"
+            ])
 
-        bloque = _recortar_hasta_siguiente_cabecera(texto[inicio:])   # <<< MODIFICADO
+        bloque = _recortar_hasta_siguiente_cabecera(texto[inicio:])
         lineas = re.findall(r"P[1-6]\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+", bloque)
 
         if not lineas:
             st.info(f"ℹ️ Energía reactiva inductiva sin valores claros en {nombre_archivo}")
-            return pd.DataFrame()
+            return pd.DataFrame(columns=[
+                "Archivo", "Periodo desde", "Periodo hasta", "Periodo",
+                "Consumo Reactiva (kWh)", "Cos φ", "A facturar Reactiva (€)"
+            ])
 
         for linea in lineas:
             m = re.match(
@@ -116,7 +125,10 @@ def extraer_reactiva_inducida(texto, periodo_desde, periodo_hasta, nombre_archiv
 
     except Exception as e:
         st.error(f"Error al procesar Energía Reactiva Inductiva en {nombre_archivo}: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(columns=[
+            "Archivo", "Periodo desde", "Periodo hasta", "Periodo",
+            "Consumo Reactiva (kWh)", "Cos φ", "A facturar Reactiva (€)"
+        ])
 
 
 # ---------------------- EXCESOS DE POTENCIA ----------------------
@@ -124,9 +136,12 @@ def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo
     inicio = texto.find("EXCESOS DE POTENCIA")
     if inicio == -1:
         st.warning(f"❌ No se encontró Excesos de Potencia en {nombre_archivo}")
-        return pd.DataFrame()
+        return pd.DataFrame(columns=[
+            "Archivo", "Periodo desde", "Periodo hasta", "Periodo",
+            "Contratada (kW)", "Demandada (kW)", "A facturar Exceso (€)"
+        ])
 
-    bloque = _recortar_hasta_siguiente_cabecera(texto[inicio:])       # <<< MODIFICADO
+    bloque = _recortar_hasta_siguiente_cabecera(texto[inicio:])
     lineas = re.findall(r"P[1-6].+", bloque)
     datos = []
 
@@ -153,24 +168,28 @@ def extraer_excesos_potencia(texto, periodo_desde, periodo_hasta, nombre_archivo
     else:
         st.warning(f"❌ No se reconocieron filas de Excesos en {nombre_archivo}")
 
+    if not datos:
+        return pd.DataFrame(columns=[
+            "Archivo", "Periodo desde", "Periodo hasta", "Periodo",
+            "Contratada (kW)", "Demandada (kW)", "A facturar Exceso (€)"
+        ])
     return pd.DataFrame(datos)
 
 
 # ---------------------- EXPORTAR A EXCEL ----------------------
-def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
-    """Genera el Excel con todas las hojas y totales."""
-    for df in [df_resumenes, df_activa, df_reactiva, df_excesos]:
-        if "Periodo desde" in df.columns:
-            df["Periodo desde"] = pd.to_datetime(df["Periodo desde"], dayfirst=True, errors='coerce')
+def _ordenar_por_fecha(df: pd.DataFrame):
+    """Convierte y ordena si la columna existe y el DF no está vacío."""
+    if not df.empty and "Periodo desde" in df.columns:
+        df["Periodo desde"] = pd.to_datetime(df["Periodo desde"], dayfirst=True, errors="coerce")
+        df.sort_values("Periodo desde", inplace=True)
 
-    df_resumenes.sort_values("Periodo desde", inplace=True)
-    df_activa.sort_values("Periodo desde", inplace=True)
-    df_reactiva.sort_values("Periodo desde", inplace=True)
-    df_excesos.sort_values("Periodo desde", inplace=True)
+def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
+    for df in (df_resumenes, df_activa, df_reactiva, df_excesos):
+        _ordenar_por_fecha(df)
 
     # Reconvertimos fechas a string dd/mm/yyyy
-    for df in [df_resumenes, df_activa, df_reactiva, df_excesos]:
-        if "Periodo desde" in df.columns:
+    for df in (df_resumenes, df_activa, df_reactiva, df_excesos):
+        if not df.empty and "Periodo desde" in df.columns:
             df["Periodo desde"] = df["Periodo desde"].dt.strftime("%d/%m/%Y")
 
     total_kwh = df_activa.groupby("Archivo")["Consumo (kWh)"].sum().reset_index()
@@ -178,11 +197,11 @@ def generar_excel_acumulado(df_resumenes, df_activa, df_reactiva, df_excesos):
 
     total_reactiva = (df_reactiva.groupby("Archivo")["A facturar Reactiva (€)"].sum()
                       .reset_index()) if not df_reactiva.empty else pd.DataFrame(columns=["Archivo", "Total Reactiva Inductiva (€)"])
-    total_reactiva.rename(columns={"A facturar Reactiva (kwh)": "Total Reactiva Inductiva (kwh)"}, inplace=True)
+    total_reactiva.rename(columns={"A facturar Reactiva (€)": "Total Reactiva Inductiva (€)"}, inplace=True)
 
     total_excesos = (df_excesos.groupby("Archivo")["A facturar Exceso (€)"].sum()
                      .reset_index()) if not df_excesos.empty else pd.DataFrame(columns=["Archivo", "Total Excesos Potencia (€)"])
-    total_excesos.rename(columns={"A facturar Exceso (kw)": "Total Excesos Potencia (kw)"}, inplace=True)
+    total_excesos.rename(columns={"A facturar Exceso (€)": "Total Excesos Potencia (€)"}, inplace=True)
 
     df_totales = total_kwh.merge(total_reactiva, on="Archivo", how="outer").merge(total_excesos, on="Archivo", how="outer").fillna(0)
 
