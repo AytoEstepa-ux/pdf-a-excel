@@ -19,16 +19,16 @@ def leer_texto_pdf(file):
 def extraer_resumen_factura(texto):
     """Extrae los campos resumen según el nuevo formato de factura."""
     campos = {
-        "Nº Factura"        : r"Factura Nº\s*([\w\-]+)",
-        "Fecha emisión"     : r"Emisión\s*(\d{2}-\d{2}-\d{4})",
-        "Periodo desde"     : r"Periodo\s*(\d{2}-\d{2}-\d{4})\s*>",
-        "Periodo hasta"     : r">\s*(\d{2}-\d{2}-\d{4})",
-        "Importe total (€)" : r"Total\s*\(€\)\s*([\d.,]+)",
-        "Cliente"           : r"Cliente\s+([A-ZÁÉÍÓÚÑ .,\d]+)",
-        "Dirección suministro": r"Suministro:\s*(.+?),\s*\d{5}",
-        "CUPS"              : r"CUPS\s*([A-Z0-9]+)",
-        "Contrato Nº"       : r"Contrato\s*(\d+)",
-    }
+    "Nº Factura": r"Nº de factura:\s*(\S+)",
+    "Fecha emisión": r"Fecha emisión factura:\s*(\d{2}/\d{2}/\d{4})",
+    "Periodo facturación": r"Periodo de facturación:\s*del\s*(\d{2}/\d{2}/\d{4})\s*al\s*(\d{2}/\d{2}/\d{4})",
+    "Importe de la factura (€)": r"IMPORTE FACTURA:\s*([\d.,]+)",
+    "Cliente": r"Cliente\s+(.*?)\s+[A-Z]{2}\d{5}",  # heurístico
+    "Dirección suministro": r"Dirección de suministro:\s*(.+?),\s*\d{5}",
+    "CUPS": r"CUPS:\s*([A-Z0-9]+)",
+    "Contrato Nº": r"Referencia del contrato:\s*(\d+)",
+}
+
 
     datos = {k: (m.group(1).strip() if (m := re.search(p, texto)) else "")
              for k, p in campos.items()}
