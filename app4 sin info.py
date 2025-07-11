@@ -44,39 +44,56 @@ def _recortar_hasta_siguiente_cabecera(bloque: str) -> str:
 
 # ---------------------- ENERGÍA ACTIVA ----------------------
 def extraer_energia_activa(texto, periodo_desde, periodo_hasta, nombre_archivo):
-    patron_seccion = r"CONSUMO\s+–\s+ACTIVA.*?(P[1-6].*?)CONSUMO\s+–\s+REACTIVA"
-    match = re.search(patron_seccion, texto, re.DOTALL)
     datos = []
 
-    if match:
-        st.write(f"✅ Energía activa encontrada en {nombre_archivo}")
-        lineas = match.group(1).strip().split("P")[1:]
-        for i, linea in enumerate(lineas):
-            partes = linea.strip().split()
-            if len(partes) >= 2:
-                periodo = f"P{i+1}"
-                try:
-                    consumo = float(partes[-1].replace('.', '').replace(',', '.'))
-                except ValueError:
-                    consumo = 0.0
-                datos.append({
-                    "Archivo": nombre_archivo,
-                    "Periodo desde": periodo_desde,
-                    "Periodo hasta": periodo_hasta,
-                    "Periodo": periodo,
-                    "Consumo (kWh)": consumo,
-                    "Tipo Lectura": "Estimada"
-                })
-    else:
+    # Buscar bloque que comienza en "ENERGÍA ACTIVA kWh"
+    inicio = texto.find("ENERGÍA ACTIVA kWh")
+    if inicio == -1:
         st.warning(f"❌ No se encontró Energía Activa en {nombre_archivo}")
-
-    # ---------- BLINDAJE: devuelve siempre las columnas ----------
-    if not datos:
         return pd.DataFrame(columns=[
             "Archivo", "Periodo desde", "Periodo hasta",
             "Periodo", "Consumo (kWh)", "Tipo Lectura"
         ])
-    return pd.DataFrame(datos)
+
+    # Tomamos bloque desde ese punto y lo cortamos si aparece otra sección
+    bloque = texto[inicio:]
+    bloque = _recortar_hasta_siguiente_cabecera(bloque)
+
+    # Buscar todas las líneas tipo: P1 1.18.1 7275,00 7275,00 1,00 0,00 0,00
+    lineas = re.findall(r"P([1-6])\s+[0-9.]+[\s,]+[\d.,]+\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+\s+[\d.,]+", bloque)
+
+    if not lineas:
+        st.info(f"ℹ️ Energía Activa presente pero sin consumos claros en {nombre_archivo}")
+        return pd.DataFrame(columns=[
+            "Archivo", "Periodo desde", "Periodo hasta",
+            "Periodo", "Consumo (kWh)", "Tipo Lectura"
+        ])
+
+    # Procesar las líneas con consumo
+    for match in re.finditer(r"P([1-6])\s+[^\n]+?([\d.,]+)$", bloque, re.MULTILINE):
+        periodo = f"P{match.group(1)}"
+        try:
+            consumo = float(match.group(2).replace('.', '').replace(',', '.'))
+        except ValueError:
+            consumo = 0.0
+        datos.append({
+            "Archivo": nombre_archivo,
+            "Periodo desde": periodo_desde,
+            "Periodo hasta": periodo_hasta,
+            "Periodo": periodo,
+            "Consumo (kWh)": consumo,
+            "Tipo Lectura": "Estimada"
+        })
+
+    if datos:
+        st.success(f"✅ Energía activa extraída correctamente de {nombre_archivo}")
+        return pd.DataFrame(datos)
+    else:
+        return pd.DataFrame(columns=[
+            "Archivo", "Periodo desde", "Periodo hasta",
+            "Periodo", "Consumo (kWh)", "Tipo Lectura"
+        ])
+
 
 
 # ---------------------- ENERGÍA REACTIVA INDUCTIVA ----------------------
